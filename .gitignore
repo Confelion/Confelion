@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+
+# Environment (NEVER commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Build output
+confelion-frontend/dist/
+
+# Uploads (user-generated content)
+uploads/
+
+# Scratch / temp files
+scratch/
+scratch_*.html
+scratch_*.css
+
+# Export files (Shopify theme exports)
+export_files/
+
+# CSV data files
+*.csv
+
+# Test scripts
+test-api.js
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Agent config (optional: remove if you want to share skills)
+.cursor/
+.kiro/
+.agents/
+
+# PowerShell scripts
+*.ps1
+
+# Python wheel artifacts
+*.whl
