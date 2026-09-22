@@ -21,6 +21,15 @@ function getPresetForFolder(folder) {
   return IMAGE_COMPRESSION_PRESETS.productMain;
 }
 
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 /**
  * Upload a file (image or video) to Cloudflare R2 with client-side pre-compression.
  * @param {File|Blob} file - The file to upload
@@ -38,12 +47,45 @@ export async function uploadFileToR2(file, folder = 'uploads') {
     try {
       const preset = getPresetForFolder(folder);
       uploadFile = await compressImage(file, preset);
-      console.info(`[Client Compression] ${file.name} compressed: ${(file.size / 1024).toFixed(1)}KB -> ${(uploadFile.size / 1024).toFixed(1)}KB`);
+      console.info(`[Client Compression] ${file.name || 'image'} compressed: ${(file.size / 1024).toFixed(1)}KB -> ${(uploadFile.size / 1024).toFixed(1)}KB`);
     } catch (compressErr) {
       console.warn('Client-side compression skipped:', compressErr.message);
     }
   }
 
+  // 1. Try robust JSON payload upload first (ideal for serverless functions & cross-platform)
+  try {
+    const base64Data = await blobToBase64(uploadFile);
+    const jsonRes = await fetch(`${API_BASE}/api/storage/upload`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fileData: base64Data,
+        fileName: file.name || 'image.webp',
+        fileType: uploadFile.type || 'image/webp',
+        folder,
+      }),
+    });
+
+    if (jsonRes.ok) {
+      const text = await jsonRes.text();
+      try {
+        const data = JSON.parse(text);
+        if (data && data.url) {
+          console.info('[R2 Upload Success via JSON]:', data.url);
+          return data.url;
+        }
+      } catch (parseErr) {
+        console.warn('Server returned non-JSON response to JSON upload, trying multipart fallback');
+      }
+    }
+  } catch (jsonErr) {
+    console.warn('[R2 JSON upload attempt error, trying multipart]:', jsonErr.message);
+  }
+
+  // 2. Fallback to multipart FormData
   const formData = new FormData();
   formData.append('file', uploadFile);
   formData.append('folder', folder);
@@ -54,13 +96,24 @@ export async function uploadFileToR2(file, folder = 'uploads') {
   });
 
   if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || `R2 upload failed: ${response.statusText}`);
+    const errText = await response.text().catch(() => '');
+    let errMessage = `R2 upload failed: HTTP ${response.status}`;
+    try {
+      const errData = JSON.parse(errText);
+      if (errData.error) errMessage = errData.error;
+    } catch {}
+    throw new Error(errMessage);
   }
 
-  const data = await response.json();
-  if (data && data.url) {
-    return data.url;
+  const resText = await response.text();
+  try {
+    const data = JSON.parse(resText);
+    if (data && data.url) {
+      console.info('[R2 Upload Success via Multipart]:', data.url);
+      return data.url;
+    }
+  } catch {
+    throw new Error('Storage service returned invalid response format');
   }
 
   throw new Error('R2 upload succeeded but no URL was returned');

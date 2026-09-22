@@ -230,13 +230,12 @@ export default function ThemeCustomizer() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      let imgUrl = null;
-      try {
-        const uploaded = await uploadMediaAsset(file, 'heroes');
-        imgUrl = uploaded.url;
-      } catch {
-        imgUrl = await compressImage(file, 2200, 0.85);
+      showToast(`Compressing & uploading ${type.toUpperCase()} banner to Cloudflare...`);
+      const uploaded = await uploadMediaAsset(file, 'heroes');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid URL');
       }
+      const imgUrl = uploaded.url;
 
       const updated = {
         ...settings,
@@ -265,11 +264,12 @@ export default function ThemeCustomizer() {
         body: JSON.stringify({ settings: updated })
       }).catch(() => {});
 
-      syncSettingsToFirestore(updated).catch(() => {});
+      await syncSettingsToFirestore(updated);
 
-      showToast(`Hero ${type.toUpperCase()} image uploaded & published live`);
+      showToast(`Hero ${type.toUpperCase()} banner uploaded to Cloudflare & published live`);
     } catch (err) {
-      alert(err.message);
+      console.error('Hero upload error:', err);
+      alert('Upload failed: ' + err.message);
     }
   };
 
@@ -277,17 +277,19 @@ export default function ThemeCustomizer() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      let imgUrl = null;
-      try {
-        const uploaded = await uploadMediaAsset(file, 'banners');
-        imgUrl = uploaded.url;
-      } catch {
-        imgUrl = await compressImage(file, 2000, 0.85);
+      showToast('Compressing & uploading editorial banner to Cloudflare...');
+      const uploaded = await uploadMediaAsset(file, 'banners');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid URL');
       }
+      const imgUrl = uploaded.url;
       updateSettings({ editorial_banner: imgUrl });
-      showToast('Editorial image uploaded');
+      const updated = { ...settings, editorial_banner: imgUrl };
+      await syncSettingsToFirestore(updated);
+      showToast('Editorial banner uploaded to Cloudflare & published live');
     } catch (err) {
-      alert(err.message);
+      console.error('Editorial upload error:', err);
+      alert('Upload failed: ' + err.message);
     }
   };
 
@@ -296,13 +298,14 @@ export default function ThemeCustomizer() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
+      showToast('Uploading video reel to Cloudflare...');
       let videoTarget = null;
-      let sourceType = 'device';
+      let sourceType = 'cloud';
       try {
         const uploaded = await uploadMediaAsset(file, 'reels');
         videoTarget = uploaded.url;
-        sourceType = 'cloud';
-      } catch {
+      } catch (uploadErr) {
+        console.warn('Direct cloud upload notice, saving device reference:', uploadErr.message);
         const key = `device-video-${Date.now()}`;
         await saveDeviceVideo(key, file);
         videoTarget = key;
@@ -315,7 +318,7 @@ export default function ThemeCustomizer() {
         sourceType: sourceType
       };
       updateReels(updated);
-      showToast('Video uploaded to reel');
+      showToast('Video uploaded to reel successfully');
     } catch (err) {
       alert('Video upload failed: ' + err.message);
     }
@@ -325,22 +328,21 @@ export default function ThemeCustomizer() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      let posterTarget = null;
-      try {
-        const uploaded = await uploadMediaAsset(file, 'reels');
-        posterTarget = uploaded.url;
-      } catch {
-        posterTarget = await compressImage(file, 800, 0.85);
+      showToast('Compressing & uploading poster to Cloudflare...');
+      const uploaded = await uploadMediaAsset(file, 'reels');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid URL');
       }
+      const posterTarget = uploaded.url;
       const updated = [...reels];
       updated[idx] = {
         ...updated[idx],
         posterUrl: posterTarget
       };
       updateReels(updated);
-      showToast('Reel poster image uploaded');
+      showToast('Reel poster uploaded to Cloudflare');
     } catch (err) {
-      alert(err.message);
+      alert('Reel poster upload failed: ' + err.message);
     }
   };
 

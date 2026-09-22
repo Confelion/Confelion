@@ -539,22 +539,15 @@ export default function Admin() {
       const processed = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        showToast(`Processing photo ${i + 1} of ${files.length}...`);
+        showToast(`Compressing & uploading photo ${i + 1} of ${files.length} to Cloudflare...`);
         try {
-          let imgUrl = null;
-          try {
-            // Upload to Cloudflare R2 with 10s timeout safeguard
-            const uploadPromise = uploadMediaAsset(file, 'products');
-            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Upload timeout')), 10000));
-            const uploaded = await Promise.race([uploadPromise, timeoutPromise]);
-            imgUrl = uploaded?.url;
-          } catch (cloudErr) {
-            console.warn('[Cloud Upload Fallback]:', cloudErr.message);
-            imgUrl = await compressImageFile(file, 1200, 0.85);
+          const uploaded = await uploadMediaAsset(file, 'products');
+          if (uploaded?.url) {
+            processed.push(uploaded.url);
           }
-          if (imgUrl) processed.push(imgUrl);
         } catch (fileErr) {
-          console.error('Failed to process image file:', file.name, fileErr);
+          console.error('Failed to upload image file to Cloudflare:', file.name, fileErr);
+          showToast(`Failed to upload ${file.name}: ${fileErr.message}`);
         }
       }
 
@@ -642,19 +635,19 @@ export default function Admin() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      let imgUrl = null;
-      try {
-        const uploaded = await uploadMediaAsset(file, 'size_charts');
-        imgUrl = uploaded.url;
-      } catch {
-        imgUrl = await compressImageFile(file, 1600, 0.85);
+      showToast('Compressing & uploading size chart to Cloudflare...');
+      const uploaded = await uploadMediaAsset(file, 'size_charts');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid URL');
       }
+      const imgUrl = uploaded.url;
       setProductForm((prev) => ({
         ...prev,
         size_chart_image: imgUrl
       }));
-      showToast('Size chart image uploaded from device');
+      showToast('Size chart image uploaded to Cloudflare');
     } catch (err) {
+      console.error('Size chart error:', err);
       alert('Size chart error: ' + err.message);
     } finally {
       if (sizeChartFileInputRef.current) sizeChartFileInputRef.current.value = '';
@@ -665,13 +658,12 @@ export default function Admin() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      let imgUrl = null;
-      try {
-        const uploaded = await uploadMediaAsset(file, 'heroes');
-        imgUrl = uploaded.url;
-      } catch {
-        imgUrl = await compressImageFile(file, 2000, 0.85);
+      showToast(`Compressing & uploading ${type === 'pc' ? 'Desktop' : 'Mobile'} banner to Cloudflare...`);
+      const uploaded = await uploadMediaAsset(file, 'heroes');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid URL');
       }
+      const imgUrl = uploaded.url;
 
       const updatedSettings = {
         ...settings,
@@ -703,10 +695,11 @@ export default function Admin() {
       }).catch(err => console.warn('Backend settings save note:', err));
 
       // 3. Persist to Cloud Firestore so mobile devices outside localhost see it
-      syncSettingsToFirestore(updatedSettings).catch(err => console.warn('Firestore settings sync note:', err));
+      await syncSettingsToFirestore(updatedSettings);
 
-      showToast(`Hero ${type === 'pc' ? 'Desktop' : 'Mobile'} image updated & published live!`);
+      showToast(`Hero ${type === 'pc' ? 'Desktop' : 'Mobile'} banner uploaded to Cloudflare & published live!`);
     } catch (err) {
+      console.error('Hero upload error:', err);
       alert('Hero upload error: ' + err.message);
     }
   };

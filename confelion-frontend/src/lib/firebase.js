@@ -104,10 +104,10 @@ export async function uploadFileToFirebaseStorage(file, folder = 'uploads', cust
 let isFirestoreAvailable = true;
 
 /**
- * Execute a Firestore promise with a fast timeout (default 1200ms) and automatic circuit-breaker.
+ * Execute a Firestore promise with a safe timeout (default 8000ms) and automatic circuit-breaker.
  * When the Firestore API is disabled or unreachable, returns fallback immediately rather than hanging for 20-30s.
  */
-export async function withFirestoreTimeout(promise, ms = 1200, fallback = null) {
+export async function withFirestoreTimeout(promise, ms = 8000, fallback = null) {
   if (!isFirestoreAvailable) {
     return fallback;
   }
@@ -144,9 +144,19 @@ export async function syncSettingsToFirestore(settings) {
   if (!isFirestoreAvailable) return false;
   try {
     const settingsDoc = doc(db, 'settings', 'storefront');
-    await withFirestoreTimeout(setDoc(settingsDoc, { ...settings, updated_at: serverTimestamp() }, { merge: true }), 1000, false);
+    const cleanSettings = { ...settings };
+    // Prevent giant base64 data URLs from exceeding Firestore 1MB document limit
+    for (const [key, val] of Object.entries(cleanSettings)) {
+      if (typeof val === 'string' && val.startsWith('data:image/')) {
+        console.warn(`[Firestore Sync] Stripped base64 string from "${key}" to preserve document integrity`);
+        delete cleanSettings[key];
+      }
+    }
+    await withFirestoreTimeout(setDoc(settingsDoc, { ...cleanSettings, updated_at: serverTimestamp() }, { merge: true }), 8000, false);
+    console.info('[Firestore] Storefront settings synced successfully');
     return true;
   } catch (error) {
+    console.error('[Firestore Sync Error]:', error);
     return false;
   }
 }
@@ -158,12 +168,13 @@ export async function fetchSettingsFromFirestore() {
   if (!isFirestoreAvailable) return null;
   try {
     const settingsDoc = doc(db, 'settings', 'storefront');
-    const snapshot = await withFirestoreTimeout(getDoc(settingsDoc), 1000, null);
+    const snapshot = await withFirestoreTimeout(getDoc(settingsDoc), 6000, null);
     if (snapshot && typeof snapshot.exists === 'function' && snapshot.exists()) {
       return snapshot.data();
     }
     return null;
   } catch (error) {
+    console.error('[Firestore Fetch Error]:', error);
     return null;
   }
 }

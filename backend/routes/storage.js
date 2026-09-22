@@ -24,18 +24,34 @@ module.exports = (db) => {
   // Upload file (images / videos) to Cloudflare R2 with auto compression and Class-A minimizing deduplication
   router.post('/upload', upload.single('file'), async (req, res) => {
     try {
-      if (!req.file) {
-        return res.status(400).json({ error: 'No file provided in multipart/form-data request' });
+      let fileBuffer = req.file?.buffer;
+      let originalName = req.file?.originalname;
+      let mimetype = req.file?.mimetype || 'application/octet-stream';
+      let folder = req.body?.folder || 'uploads';
+
+      if (!fileBuffer && (req.body?.fileData || req.body?.base64)) {
+        let rawBase64 = req.body.fileData || req.body.base64;
+        const match = rawBase64.match(/^data:([^;]+);base64,(.+)$/);
+        if (match) {
+          mimetype = match[1];
+          rawBase64 = match[2];
+        } else if (req.body.fileType) {
+          mimetype = req.body.fileType;
+        }
+        fileBuffer = Buffer.from(rawBase64, 'base64');
+        originalName = req.body.fileName || `asset-${Date.now()}`;
       }
 
-      const folder = req.body.folder || 'uploads';
+      if (!fileBuffer) {
+        return res.status(400).json({ error: 'No file provided in upload request' });
+      }
 
       if (isR2Configured()) {
         const result = await compressAndUploadToR2({
-          buffer: req.file.buffer,
-          originalName: req.file.originalname,
+          buffer: fileBuffer,
+          originalName: originalName || 'image.webp',
           folder,
-          mimetype: req.file.mimetype,
+          mimetype,
         });
 
         return res.json({
@@ -43,7 +59,7 @@ module.exports = (db) => {
           ...result
         });
       } else {
-        const ext = path.extname(req.file.originalname) || '.bin';
+        const ext = path.extname(originalName || '') || '.bin';
         const cleanName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
         const mockUrl = `/uploads/${cleanName}`;
         return res.json({

@@ -21,6 +21,12 @@ export default function Home() {
         if (cached) {
           const parsed = JSON.parse(cached);
           if (parsed && typeof parsed === 'object') {
+            // Strip any stale data:image base64 strings so they never mask cloud URLs
+            for (const k in parsed) {
+              if (typeof parsed[k] === 'string' && parsed[k].startsWith('data:image/')) {
+                delete parsed[k];
+              }
+            }
             setSettings(prev => ({ ...STORE_SETTINGS, ...prev, ...parsed }));
           }
         }
