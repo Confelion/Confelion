@@ -17,6 +17,7 @@ import {
   Clock
 } from 'lucide-react';
 import { fetchAPI, checkDelhiveryPincode } from '../lib/api';
+import { fetchFirestoreProducts } from '../lib/firebase';
 import { PRODUCTS_DATA, DEFAULT_SIZE_CHART } from '../data/mockData';
 import ProductGrid from '../components/ProductGrid';
 import { addItemToCart } from '../lib/cartManager';
@@ -63,18 +64,41 @@ export default function ProductDetail() {
     }
   }, []);
 
-  const loadProduct = () => {
-    fetchAPI(`/api/products/${handle}`)
-      .then((res) => {
+  const loadProduct = async () => {
+    try {
+      const res = await fetchAPI(`/api/products/${handle}`);
+      if (res && res.product) {
         setData(res);
         if (res?.variants?.length > 0) {
           setSelectedSize(res.variants[0].title || 'M');
         }
         setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
+        return;
+      }
+    } catch (err) {}
+
+    // Fallback to Firestore products collection for newly created items
+    try {
+      const fsProds = await fetchFirestoreProducts();
+      const found = fsProds.find(p => p.handle === handle || p.id === handle);
+      if (found) {
+        const productObj = {
+          product: found,
+          images: (found.images && found.images.length > 0) ? found.images : [found.image_url],
+          variants: (found.sizes || ['S', 'M', 'L', 'XL', 'XXL']).map(s => ({ id: s, title: s, inventory_quantity: found.inventory !== undefined ? found.inventory : 10 })),
+          sizeChart: found.size_chart_mode === 'image' && found.size_chart_image ? null : (found.size_chart || DEFAULT_SIZE_CHART),
+          sizeChartImage: found.size_chart_mode === 'image' ? found.size_chart_image : null
+        };
+        setData(productObj);
+        if (productObj.variants.length > 0) {
+          setSelectedSize(productObj.variants[0].title);
+        }
+      }
+    } catch (fsErr) {
+      console.warn('Firestore product fallback error:', fsErr);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

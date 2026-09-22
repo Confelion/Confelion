@@ -13,7 +13,8 @@ import {
   query, 
   where, 
   orderBy,
-  serverTimestamp 
+  serverTimestamp,
+  onSnapshot
 } from 'firebase/firestore';
 import { getStorage, ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { getAnalytics, isSupported } from 'firebase/analytics';
@@ -180,6 +181,26 @@ export async function fetchSettingsFromFirestore() {
 }
 
 /**
+ * Real-time listener for storefront settings changes.
+ * Automatically pushes updates to the UI in milliseconds whenever the dashboard saves.
+ */
+export function subscribeToStoreSettings(callback) {
+  if (!isFirestoreAvailable) return () => {};
+  try {
+    const settingsDoc = doc(db, 'settings', 'storefront');
+    return onSnapshot(settingsDoc, (snapshot) => {
+      if (snapshot.exists()) {
+        callback(snapshot.data());
+      }
+    }, (err) => {
+      console.warn('[Firestore Settings Realtime Listener]:', err.message);
+    });
+  } catch (e) {
+    return () => {};
+  }
+}
+
+/**
  * Save or update user profile document in Firestore.
  */
 export async function saveUserProfileToFirestore(uid, profileData) {
@@ -325,7 +346,7 @@ export async function saveProductToFirestore(product) {
       id: docId,
       handle: docId,
       updated_at: serverTimestamp()
-    }, { merge: true }), 1200, false);
+    }, { merge: true }), 8000, false);
     return true;
   } catch (err) {
     console.warn('[Firestore] Product save note:', err.message);
@@ -340,16 +361,44 @@ export async function fetchFirestoreProducts() {
   if (!isFirestoreAvailable) return [];
   try {
     const productsCol = collection(db, 'products');
-    const snapshot = await withFirestoreTimeout(getDocs(productsCol), 1500, null);
+    const snapshot = await withFirestoreTimeout(getDocs(productsCol), 6000, null);
     if (!snapshot) return [];
     const prods = [];
     snapshot.forEach((d) => {
-      prods.push({ id: d.id, ...d.data() });
+      const data = d.data();
+      if (!data.is_deleted && data.published !== false) {
+        prods.push({ id: d.id, ...data });
+      }
     });
     return prods;
   } catch (err) {
     console.warn('[Firestore] Product fetch note:', err.message);
     return [];
+  }
+}
+
+/**
+ * Real-time listener for product catalog changes.
+ * Automatically synchronizes newly added or edited products across all devices.
+ */
+export function subscribeToProducts(callback) {
+  if (!isFirestoreAvailable) return () => {};
+  try {
+    const productsCol = collection(db, 'products');
+    return onSnapshot(productsCol, (snapshot) => {
+      const prods = [];
+      snapshot.forEach((d) => {
+        const data = d.data();
+        if (!data.is_deleted && data.published !== false) {
+          prods.push({ id: d.id, ...data });
+        }
+      });
+      callback(prods);
+    }, (err) => {
+      console.warn('[Firestore Products Realtime Listener]:', err.message);
+    });
+  } catch (e) {
+    return () => {};
   }
 }
 

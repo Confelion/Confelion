@@ -10,9 +10,9 @@ module.exports = function handler(req, res) {
 
   // Fallback defaults for serverless environment without SQLite
   const defaultSettings = {
-    hero_image: "https://pub-2dfcf8b99fc24f2e936e2826ab666474.r2.dev/uploads/heroes/kaalvaish-pc.webp",
-    hero_image_pc: "https://pub-2dfcf8b99fc24f2e936e2826ab666474.r2.dev/uploads/heroes/kaalvaish-pc.webp",
-    hero_image_mobile: "https://pub-2dfcf8b99fc24f2e936e2826ab666474.r2.dev/uploads/heroes/kaalvaish-mobile.webp",
+    hero_image: "",
+    hero_image_pc: "",
+    hero_image_mobile: "",
     hero_headline: "AUTUMN / WINTER 2026",
     hero_subheadline: "THE MONOCHROME ESSENTIALS",
     hero_button_text: "Shop Now",

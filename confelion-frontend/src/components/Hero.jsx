@@ -1,8 +1,8 @@
 import { Link } from 'react-router-dom';
 
 export default function Hero({ 
-  imagePc = 'https://www.kaalvaish.in/cdn/shop/files/Kaalvaish_Hero_Banner_PC_1.png?v=1786518719&width=3840',
-  imageMobile = 'https://www.kaalvaish.in/cdn/shop/files/Kaalvaish_Hero_Banner_MOBILE.png?v=1786518421&width=3840',
+  imagePc = '',
+  imageMobile = '',
   buttonText = 'Shop Now',
   buttonLink = '/products',
   headline = '',
@@ -49,18 +49,9 @@ export default function Hero({
     ? 'px-6 py-2.5 text-xs'
     : 'px-8 py-3 text-xs sm:text-sm';
 
-  const DEFAULT_PC = 'https://www.kaalvaish.in/cdn/shop/files/Kaalvaish_Hero_Banner_PC_1.png?v=1786518719&width=3840';
-  const DEFAULT_MOBILE = 'https://www.kaalvaish.in/cdn/shop/files/Kaalvaish_Hero_Banner_MOBILE.png?v=1786518421&width=3840';
-
-  // Intelligently fallback: if user uploaded a custom banner for PC, mobile will also display it instead of stale default
-  let resolvedPc = imagePc || DEFAULT_PC;
-  let resolvedMobile = imageMobile;
-  if (!resolvedMobile || resolvedMobile === DEFAULT_MOBILE) {
-    resolvedMobile = (resolvedPc && resolvedPc !== DEFAULT_PC) ? resolvedPc : (imageMobile || DEFAULT_MOBILE);
-  }
-  if (!resolvedPc || resolvedPc === DEFAULT_PC) {
-    resolvedPc = (resolvedMobile && resolvedMobile !== DEFAULT_MOBILE) ? resolvedMobile : (imagePc || DEFAULT_PC);
-  }
+  // Variable banner resolution: dynamically derived strictly from dashboard settings
+  const resolvedPc = imagePc || imageMobile || '';
+  const resolvedMobile = imageMobile || imagePc || '';
 
   return (
     <section className="relative w-full bg-black overflow-hidden select-none">

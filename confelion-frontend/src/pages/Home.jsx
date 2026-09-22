@@ -5,46 +5,56 @@ import EditorialBanner from '../components/EditorialBanner';
 import LookbookReels from '../components/LookbookReels';
 import BrandSignature from '../components/BrandSignature';
 import { fetchAPI } from '../lib/api';
-import { fetchSettingsFromFirestore } from '../lib/firebase';
+import { 
+  fetchSettingsFromFirestore, 
+  subscribeToStoreSettings, 
+  fetchFirestoreProducts, 
+  subscribeToProducts 
+} from '../lib/firebase';
 import { STORE_SETTINGS, PRODUCTS_DATA } from '../data/mockData';
 
 export default function Home() {
-  const [settings, setSettings] = useState(STORE_SETTINGS);
+  const [settings, setSettings] = useState(() => {
+    try {
+      const cached = localStorage.getItem('confelion_settings');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && typeof parsed === 'object') {
+          for (const k in parsed) {
+            if (typeof parsed[k] === 'string' && parsed[k].startsWith('data:image/')) {
+              delete parsed[k];
+            }
+          }
+          return { ...STORE_SETTINGS, ...parsed };
+        }
+      }
+    } catch (e) {}
+    return STORE_SETTINGS;
+  });
+
   const [recentDrops, setRecentDrops] = useState([]);
   const [bestSellers, setBestSellers] = useState([]);
 
   const loadData = async () => {
     try {
-      // 1. Instant render from local cache if present
-      try {
-        const cached = localStorage.getItem('confelion_settings');
-        if (cached) {
-          const parsed = JSON.parse(cached);
-          if (parsed && typeof parsed === 'object') {
-            // Strip any stale data:image base64 strings so they never mask cloud URLs
-            for (const k in parsed) {
-              if (typeof parsed[k] === 'string' && parsed[k].startsWith('data:image/')) {
-                delete parsed[k];
-              }
-            }
-            setSettings(prev => ({ ...STORE_SETTINGS, ...prev, ...parsed }));
-          }
-        }
-      } catch (e) {}
-
-      // 2. Concurrently fetch backend API & Cloud Firestore settings
-      const [prods, sett, firestoreSett] = await Promise.all([
+      // Concurrently fetch backend API & Cloud Firestore settings & products
+      const [prods, sett, firestoreSett, firestoreProds] = await Promise.all([
         fetchAPI('/api/products').catch(() => []),
         fetchAPI('/api/settings').catch(() => null),
         fetchSettingsFromFirestore().catch(() => null),
+        fetchFirestoreProducts().catch(() => []),
       ]);
 
-      if (Array.isArray(prods) && prods.length > 0) {
-        setRecentDrops(prods.filter((p) => p.is_recent_drop).slice(0, 4));
-        setBestSellers(prods.filter((p) => p.is_bestseller).slice(0, 4));
-      } else {
-        setRecentDrops(PRODUCTS_DATA.filter((p) => p.is_recent_drop).slice(0, 4));
-        setBestSellers(PRODUCTS_DATA.filter((p) => p.is_bestseller).slice(0, 4));
+      // Merge products: Firestore real-time products take priority, with backend/mock fallbacks
+      const allProdsMap = new Map();
+      PRODUCTS_DATA.forEach(p => allProdsMap.set(p.handle || p.id, p));
+      if (Array.isArray(prods)) prods.forEach(p => allProdsMap.set(p.handle || p.id, p));
+      if (Array.isArray(firestoreProds)) firestoreProds.forEach(p => allProdsMap.set(p.handle || p.id, p));
+      const combinedProds = Array.from(allProdsMap.values());
+
+      if (combinedProds.length > 0) {
+        setRecentDrops(combinedProds.filter((p) => p.is_recent_drop).slice(0, 4));
+        setBestSellers(combinedProds.filter((p) => p.is_bestseller).slice(0, 4));
       }
 
       // Merge: STORE_SETTINGS < backend SQLite < Firestore cloud truth
@@ -57,7 +67,7 @@ export default function Home() {
       if (merged.hero_image && !merged.hero_image_pc) {
         merged.hero_image_pc = merged.hero_image;
       }
-      if (merged.hero_image_pc && (!merged.hero_image_mobile || merged.hero_image_mobile === STORE_SETTINGS.hero_image_mobile)) {
+      if (merged.hero_image_pc && !merged.hero_image_mobile) {
         merged.hero_image_mobile = merged.hero_image_pc;
       }
 
@@ -73,6 +83,33 @@ export default function Home() {
 
   useEffect(() => {
     loadData();
+
+    // Real-time Firestore WebSocket listeners for 0-delay updates across all devices
+    const unsubSettings = subscribeToStoreSettings((liveSettings) => {
+      if (liveSettings) {
+        setSettings((prev) => {
+          const next = { ...prev, ...liveSettings };
+          if (next.hero_image && !next.hero_image_pc) next.hero_image_pc = next.hero_image;
+          if (next.hero_image_pc && !next.hero_image_mobile) next.hero_image_mobile = next.hero_image_pc;
+          try {
+            localStorage.setItem('confelion_settings', JSON.stringify(next));
+          } catch (e) {}
+          return next;
+        });
+      }
+    });
+
+    const unsubProducts = subscribeToProducts((liveProds) => {
+      if (Array.isArray(liveProds) && liveProds.length > 0) {
+        const allProdsMap = new Map();
+        PRODUCTS_DATA.forEach(p => allProdsMap.set(p.handle || p.id, p));
+        liveProds.forEach(p => allProdsMap.set(p.handle || p.id, p));
+        const combined = Array.from(allProdsMap.values());
+        setRecentDrops(combined.filter((p) => p.is_recent_drop).slice(0, 4));
+        setBestSellers(combined.filter((p) => p.is_bestseller).slice(0, 4));
+      }
+    });
+
     const handleSettingsUpdate = (e) => {
       if (e.detail) setSettings(e.detail);
     };
@@ -85,6 +122,8 @@ export default function Home() {
     window.addEventListener('storage', handleProductsUpdate);
 
     return () => {
+      unsubSettings();
+      unsubProducts();
       window.removeEventListener('settings-updated', handleSettingsUpdate);
       window.removeEventListener('products-updated', handleProductsUpdate);
       window.removeEventListener('storage', handleProductsUpdate);

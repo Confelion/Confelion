@@ -2,10 +2,13 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
 import { fetchAPI } from '../lib/api';
+import { fetchFirestoreProducts, subscribeToProducts } from '../lib/firebase';
+import { PRODUCTS_DATA } from '../data/mockData';
 
 export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState([]);
+  const [rawProducts, setRawProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const activeType = searchParams.get('type') || 'all';
@@ -20,21 +23,51 @@ export default function Products() {
     { id: 'hoodie', label: 'HOODIES' },
   ];
 
-  const loadProducts = () => {
-    const query = new URLSearchParams();
-    if (activeType !== 'all') query.set('type', activeType);
-    if (sort !== 'featured') query.set('sort', sort);
-    if (searchQuery) query.set('q', searchQuery);
+  // Apply filters and sorting to raw combined products
+  const applyFilters = (items) => {
+    let filtered = [...items];
 
-    fetchAPI(`/api/products?${query.toString()}`)
-      .then((res) => {
-        setProducts(res);
-        setLoading(false);
-      })
-      .catch(() => {
-        setProducts([]);
-        setLoading(false);
-      });
+    if (activeType !== 'all') {
+      filtered = filtered.filter(p => (p.type || p.category || '').toLowerCase() === activeType.toLowerCase());
+    }
+
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(p => 
+        (p.title || '').toLowerCase().includes(q) || 
+        (p.description || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (sort === 'price-low') {
+      filtered.sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+    } else if (sort === 'price-high') {
+      filtered.sort((a, b) => Number(b.price || 0) - Number(a.price || 0));
+    }
+
+    setProducts(filtered);
+  };
+
+  const loadProducts = async () => {
+    try {
+      const [apiProds, fsProds] = await Promise.all([
+        fetchAPI('/api/products').catch(() => []),
+        fetchFirestoreProducts().catch(() => [])
+      ]);
+
+      const map = new Map();
+      PRODUCTS_DATA.forEach(p => map.set(p.handle || p.id, p));
+      if (Array.isArray(apiProds)) apiProds.forEach(p => map.set(p.handle || p.id, p));
+      if (Array.isArray(fsProds)) fsProds.forEach(p => map.set(p.handle || p.id, p));
+
+      const combined = Array.from(map.values());
+      setRawProducts(combined);
+      applyFilters(combined);
+    } catch (err) {
+      console.error('Products load error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -42,11 +75,27 @@ export default function Products() {
     setLoading(true);
     loadProducts();
 
+    // Real-time synchronization: newly added or modified products appear instantly
+    const unsub = subscribeToProducts((liveProds) => {
+      if (Array.isArray(liveProds) && liveProds.length > 0) {
+        setRawProducts(prev => {
+          const map = new Map();
+          PRODUCTS_DATA.forEach(p => map.set(p.handle || p.id, p));
+          prev.forEach(p => map.set(p.handle || p.id, p));
+          liveProds.forEach(p => map.set(p.handle || p.id, p));
+          const combined = Array.from(map.values());
+          applyFilters(combined);
+          return combined;
+        });
+      }
+    });
+
     const handleProductsUpdate = () => loadProducts();
     window.addEventListener('products-updated', handleProductsUpdate);
     window.addEventListener('storage', handleProductsUpdate);
 
     return () => {
+      unsub();
       window.removeEventListener('products-updated', handleProductsUpdate);
       window.removeEventListener('storage', handleProductsUpdate);
     };
