@@ -13,7 +13,9 @@ node_modules/
 *.db-shm
 
 # Build output
+dist/
 confelion-frontend/dist/
+.vercel/
 
 # Uploads (user-generated content)
 uploads/

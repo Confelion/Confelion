@@ -1,13 +1,20 @@
 {
   "name": "confelion",
   "version": "1.0.0",
-  "description": "",
+  "description": "Confelion Luxury Apparel Platform",
   "main": "server.js",
+  "workspaces": [
+    "confelion-frontend"
+  ],
+  "allowScripts": {
+    "better-sqlite3": true
+  },
   "scripts": {
     "start": "concurrently \"node server.js\" \"npm run dev --prefix confelion-frontend\"",
     "dev": "concurrently \"node server.js\" \"npm run dev --prefix confelion-frontend\"",
     "server": "node server.js",
-    "build": "npm run build --prefix confelion-frontend",
+    "postinstall": "npm --prefix confelion-frontend install",
+    "build": "npm --prefix confelion-frontend install && npm --prefix confelion-frontend run build && node -e \"const fs=require('fs'); try { fs.cpSync('confelion-frontend/dist', 'dist', {recursive:true}); } catch(e){}\"",
     "preview": "npm run preview --prefix confelion-frontend",
     "dev:frontend": "npm run dev --prefix confelion-frontend",
     "build:frontend": "npm run build --prefix confelion-frontend"
@@ -32,6 +39,7 @@
     "sharp": "^0.35.3"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.5",
+    "vite": "^5.4.0"
   }
 }
