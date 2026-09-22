@@ -9,6 +9,7 @@ import {
   getDocs, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   query, 
   where, 
   orderBy,
@@ -20,9 +21,9 @@ import { getAnalytics, isSupported } from 'firebase/analytics';
 // Confelion Firebase Configuration
 export const firebaseConfig = {
   apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyAPuTvYWvFYOpxOEx34jQTaMB1wvLy23iY",
-  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "paypertap-76218.firebaseapp.com",
-  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "paypertap-76218",
-  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "paypertap-76218.appspot.com",
+  authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "confelion.firebaseapp.com",
+  projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "confelion",
+  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "confelion.appspot.com",
   messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "762181234567",
   appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:762181234567:web:1234567890abcdef",
   measurementId: import.meta.env?.VITE_FIREBASE_MEASUREMENT_ID || "G-4N2Z0NPVKN"
@@ -371,3 +372,170 @@ export async function updateFirestoreProductStock(handleOrId, newQty) {
     return false;
   }
 }
+
+/**
+ * Save VIP Subscriber email to Cloud Firestore collection 'vip_subscribers'.
+ * Also stores in local cache so email is never lost.
+ */
+export async function saveVipSubscriber(email) {
+  if (!email || typeof email !== 'string') return false;
+  const cleanEmail = email.trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes('@')) return false;
+
+  const docId = cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+  const record = {
+    email: cleanEmail,
+    status: 'active',
+    source: 'footer_vip_button',
+    subscribed_at: new Date().toISOString()
+  };
+
+  // Local storage mirror
+  try {
+    const existing = JSON.parse(localStorage.getItem('confelion_vip_subscribers') || '[]');
+    if (!existing.some(s => s.email === cleanEmail)) {
+      existing.unshift(record);
+      localStorage.setItem('confelion_vip_subscribers', JSON.stringify(existing));
+    }
+  } catch (e) {
+    // Ignore local storage error
+  }
+
+  if (!isFirestoreAvailable) return true;
+
+  try {
+    const vipDoc = doc(db, 'vip_subscribers', docId);
+    await withFirestoreTimeout(
+      setDoc(vipDoc, {
+        ...record,
+        created_at: serverTimestamp(),
+        updated_at: serverTimestamp()
+      }, { merge: true }),
+      1500,
+      false
+    );
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] VIP subscriber save note:', err.message);
+    return true; // Still true since local mirror succeeded
+  }
+}
+
+/**
+ * Fetch all VIP subscribers from Cloud Firestore collection 'vip_subscribers'.
+ */
+export async function fetchVipSubscribers() {
+  let list = [];
+
+  // 1. Fetch from Firestore if available
+  if (isFirestoreAvailable) {
+    try {
+      const vipCol = collection(db, 'vip_subscribers');
+      const snapshot = await withFirestoreTimeout(getDocs(vipCol), 1500, null);
+      if (snapshot && typeof snapshot.forEach === 'function') {
+        snapshot.forEach((d) => {
+          list.push({ id: d.id, ...d.data() });
+        });
+      }
+    } catch (err) {
+      console.warn('[Firestore] fetchVipSubscribers note:', err.message);
+    }
+  }
+
+  // 2. Merge local cache subscribers
+  try {
+    const local = JSON.parse(localStorage.getItem('confelion_vip_subscribers') || '[]');
+    const map = new Map();
+    list.forEach(item => map.set(item.email, item));
+    local.forEach(item => {
+      if (!map.has(item.email)) {
+        map.set(item.email, item);
+      }
+    });
+    list = Array.from(map.values());
+  } catch (e) {
+    // Ignore
+  }
+
+  return list;
+}
+
+/**
+ * Delete a VIP subscriber from Cloud Firestore and local storage.
+ */
+export async function deleteVipSubscriber(idOrEmail) {
+  if (!idOrEmail) return false;
+  const cleanEmail = idOrEmail.trim().toLowerCase();
+  const docId = cleanEmail.includes('@') ? cleanEmail.replace(/[^a-zA-Z0-9]/g, '_') : cleanEmail;
+
+  // Local storage cleanup
+  try {
+    const existing = JSON.parse(localStorage.getItem('confelion_vip_subscribers') || '[]');
+    const filtered = existing.filter(s => s.email !== cleanEmail && s.id !== idOrEmail);
+    localStorage.setItem('confelion_vip_subscribers', JSON.stringify(filtered));
+  } catch (e) {}
+
+  if (!isFirestoreAvailable) return true;
+
+  try {
+    const vipDoc = doc(db, 'vip_subscribers', docId);
+    await withFirestoreTimeout(deleteDoc(vipDoc), 1000, false);
+    return true;
+  } catch (err) {
+    console.warn('[Firestore] deleteVipSubscriber note:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Reset Firestore Dashboard:
+ * Deletes all documents in 'orders' and 'vip_subscribers' collections.
+ * Clears test orders and VIP subscribers while keeping product catalog and system settings intact.
+ */
+export async function resetFirestoreDashboard() {
+  const result = { ordersDeleted: 0, vipsDeleted: 0, success: true };
+
+  // Clear local storage orders and VIP entries
+  try {
+    localStorage.removeItem('confelion_vip_subscribers');
+    localStorage.removeItem('confelion_orders');
+    localStorage.removeItem('confelion_cart');
+  } catch (e) {}
+
+  if (!isFirestoreAvailable) return result;
+
+  try {
+    // Delete all orders
+    const ordersCol = collection(db, 'orders');
+    const orderSnaps = await withFirestoreTimeout(getDocs(ordersCol), 2000, null);
+    if (orderSnaps && typeof orderSnaps.forEach === 'function') {
+      const deletePromises = [];
+      orderSnaps.forEach((docSnap) => {
+        deletePromises.push(deleteDoc(docSnap.ref));
+        result.ordersDeleted++;
+      });
+      await Promise.all(deletePromises);
+    }
+  } catch (err) {
+    console.warn('[Firestore] Reset orders error:', err.message);
+  }
+
+  try {
+    // Delete all VIP subscribers
+    const vipsCol = collection(db, 'vip_subscribers');
+    const vipSnaps = await withFirestoreTimeout(getDocs(vipsCol), 2000, null);
+    if (vipSnaps && typeof vipSnaps.forEach === 'function') {
+      const deletePromises = [];
+      vipSnaps.forEach((docSnap) => {
+        deletePromises.push(deleteDoc(docSnap.ref));
+        result.vipsDeleted++;
+      });
+      await Promise.all(deletePromises);
+    }
+  } catch (err) {
+    console.warn('[Firestore] Reset VIP error:', err.message);
+  }
+
+  return result;
+}
+

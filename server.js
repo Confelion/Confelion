@@ -44,8 +44,21 @@ app.get('/api/settings', (req, res) => {
   try {
     const rows = db.prepare('SELECT key, value FROM settings').all()
     const settings = {}
-    rows.forEach(r => settings[r.key] = r.value)
-    res.set('Cache-Control', 'no-cache, must-revalidate')
+    rows.forEach(r => {
+      try {
+        settings[r.key] = JSON.parse(r.value)
+      } catch {
+        settings[r.key] = r.value
+      }
+    })
+    // Ensure desktop and mobile hero images are guaranteed
+    if (settings.hero_image && !settings.hero_image_pc) {
+      settings.hero_image_pc = settings.hero_image
+    }
+    if (settings.hero_image_pc && !settings.hero_image_mobile) {
+      settings.hero_image_mobile = settings.hero_image_pc
+    }
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate')
     res.json(settings)
   } catch (e) {
     res.status(500).json({error: e.message})

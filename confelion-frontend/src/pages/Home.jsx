@@ -5,6 +5,7 @@ import EditorialBanner from '../components/EditorialBanner';
 import LookbookReels from '../components/LookbookReels';
 import BrandSignature from '../components/BrandSignature';
 import { fetchAPI } from '../lib/api';
+import { fetchSettingsFromFirestore } from '../lib/firebase';
 import { STORE_SETTINGS, PRODUCTS_DATA } from '../data/mockData';
 
 export default function Home() {
@@ -14,10 +15,24 @@ export default function Home() {
 
   const loadData = async () => {
     try {
-      const [prods, sett] = await Promise.all([
-        fetchAPI('/api/products'),
-        fetchAPI('/api/settings'),
+      // 1. Instant render from local cache if present
+      try {
+        const cached = localStorage.getItem('confelion_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === 'object') {
+            setSettings(prev => ({ ...STORE_SETTINGS, ...prev, ...parsed }));
+          }
+        }
+      } catch (e) {}
+
+      // 2. Concurrently fetch backend API & Cloud Firestore settings
+      const [prods, sett, firestoreSett] = await Promise.all([
+        fetchAPI('/api/products').catch(() => []),
+        fetchAPI('/api/settings').catch(() => null),
+        fetchSettingsFromFirestore().catch(() => null),
       ]);
+
       if (Array.isArray(prods) && prods.length > 0) {
         setRecentDrops(prods.filter((p) => p.is_recent_drop).slice(0, 4));
         setBestSellers(prods.filter((p) => p.is_bestseller).slice(0, 4));
@@ -25,11 +40,28 @@ export default function Home() {
         setRecentDrops(PRODUCTS_DATA.filter((p) => p.is_recent_drop).slice(0, 4));
         setBestSellers(PRODUCTS_DATA.filter((p) => p.is_bestseller).slice(0, 4));
       }
-      if (sett && sett.hero_image_pc) {
-        setSettings(sett);
+
+      // Merge: STORE_SETTINGS < backend SQLite < Firestore cloud truth
+      const merged = {
+        ...STORE_SETTINGS,
+        ...(sett || {}),
+        ...(firestoreSett || {})
+      };
+
+      if (merged.hero_image && !merged.hero_image_pc) {
+        merged.hero_image_pc = merged.hero_image;
       }
+      if (merged.hero_image_pc && (!merged.hero_image_mobile || merged.hero_image_mobile === STORE_SETTINGS.hero_image_mobile)) {
+        merged.hero_image_mobile = merged.hero_image_pc;
+      }
+
+      setSettings(merged);
+
+      try {
+        localStorage.setItem('confelion_settings', JSON.stringify(merged));
+      } catch (e) {}
     } catch (e) {
-      console.error(e);
+      console.error('Home loadData error:', e);
     }
   };
 

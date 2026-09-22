@@ -1,0 +1,206 @@
+rules_version = '2';
+
+// ===============================================================
+// Confelion Cloud Firestore Security Rules
+// ===============================================================
+//
+// Assumed Data Model:
+//
+// 1. Collection: products
+//    Document ID: product handle or unique ID (e.g. 'black-panther-shirt')
+//    Fields:
+//      - id: string (required) - unique identifier
+//      - handle: string (required, 1-100 chars) - URL-friendly slug
+//      - title: string (required, 1-200 chars) - product title
+//      - price: number (required, > 0) - price in INR
+//      - compare_at_price: number (optional) - original price
+//      - category: string (optional) - category name
+//      - type: string (optional) - silhouette type (tee, shirt, jeans, hoodie)
+//      - inventory: number (required, >= 0) - stock quantity
+//      - sizes: list of strings (optional, max 10 sizes)
+//      - image_url: string (optional) - primary product image (Cloudflare R2 URL)
+//      - images: list of strings (optional, max 20 images)
+//      - description: string (optional, max 5000 chars)
+//      - published: bool (optional) - visibility flag
+//      - updated_at: timestamp (optional)
+//
+// 2. Collection: orders
+//    Document ID: order ID (e.g. 'ORD-1727000000000')
+//    Fields:
+//      - id: string (required)
+//      - email: string (required, valid email)
+//      - customer_name: string (optional, max 100 chars)
+//      - phone: string (optional, max 20 chars)
+//      - total: number (required, >= 0)
+//      - items: list (required, 1-50 items)
+//      - status: string (optional, 'Processing', 'In Transit', 'Delivered', 'Cancelled')
+//      - user_id: string (optional) - UID of customer if logged in
+//      - created_at: timestamp (optional)
+//
+// 3. Collection: users
+//    Document ID: user UID (request.auth.uid)
+//    Fields:
+//      - id: string (required) - matches document ID / request.auth.uid
+//      - email: string (required, valid email)
+//      - name: string (optional, max 100 chars)
+//      - role: string (optional, 'customer' or 'admin')
+//      - phone: string (optional, max 20 chars)
+//      - address: string (optional, max 300 chars)
+//      - city: string (optional, max 100 chars)
+//      - pincode: string (optional, max 10 chars)
+//      - updated_at: timestamp (optional)
+//
+// 4. Collection: carts
+//    Document ID: user UID (request.auth.uid)
+//    Fields:
+//      - items: list (max 50 items)
+//      - items_count: number (>= 0)
+//      - updated_at: timestamp (optional)
+//
+// 5. Collection: vip_subscribers
+//    Document ID: sanitized email or auto-id
+//    Fields:
+//      - email: string (required, valid email format)
+//      - source: string (optional, max 100 chars)
+//      - created_at: timestamp (optional)
+//
+// 6. Collection: settings
+//    Document ID: 'storefront' or key name
+//    Fields:
+//      - announcement: string (optional)
+//      - hero_headline: string (optional)
+//      - footer_about: string (optional)
+//      - cod_enabled: bool (optional)
+//      - updated_at: timestamp (optional)
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Admin role check: checks custom claim, known admin emails, or user profile doc
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email in ['confelion@gmail.com', 'admin@confelion.com', 'admin.confelion@gmail.com'] ||
+        (request.auth.token != null && 'admin' in request.auth.token && request.auth.token.admin == true) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() >= 3 &&
+        email.size() <= 254 &&
+        email.matches('^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$');
+    }
+
+    function isValidUrl(url) {
+      return url is string &&
+        url.size() <= 2048 &&
+        (url.matches('^https://.*') || url.matches('^http://.*') || url.matches('^/.*') || url.matches('^data:.*'));
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidProduct(data) {
+      return ('title' in data && data.title is string && data.title.size() > 0 && data.title.size() <= 200) &&
+             ('price' in data && data.price is number && data.price >= 0);
+    }
+
+    function isValidOrder(data) {
+      return ('email' in data && isValidEmail(data.email)) &&
+             ('total' in data && data.total is number && data.total >= 0);
+    }
+
+    function isValidUser(data) {
+      return ('email' in data && isValidEmail(data.email));
+    }
+
+    function isValidVipSubscriber(data) {
+      return ('email' in data && isValidEmail(data.email));
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // 1. PRODUCTS COLLECTION
+    // Public catalog read access; create, update, delete restricted to Confelion administrators
+    match /products/{productId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidProduct(request.resource.data);
+      allow update: if isAdmin() && isValidProduct(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // 2. ORDERS COLLECTION
+    // Customers can place orders; patrons can read their own orders; admins have full management
+    match /orders/{orderId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && (
+          (resource.data.user_id != null && resource.data.user_id == request.auth.uid) ||
+          (resource.data.email != null && resource.data.email == request.auth.token.email)
+        )
+      );
+      allow create: if isValidOrder(request.resource.data);
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 3. USERS COLLECTION (Patron Profiles)
+    // Patrons can read & edit their own profile; cannot self-escalate role to 'admin'; admins can manage
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isAuthenticated() && isOwner(userId) && isValidUser(request.resource.data) && (
+        !('role' in request.resource.data) || request.resource.data.role != 'admin' || isAdmin()
+      );
+      allow update: if (
+        isOwner(userId) && isValidUser(request.resource.data) && (
+          !('role' in request.resource.data) || request.resource.data.role == resource.data.role || isAdmin()
+        )
+      ) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 4. CARTS COLLECTION
+    // Customer shopping carts; isolated to document owner
+    match /carts/{userId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+
+    // 5. VIP SUBSCRIBERS COLLECTION
+    // Storefront visitors can register their email for exclusive drops; only administrators can read/export the list
+    match /vip_subscribers/{subscriberId} {
+      allow create: if isValidVipSubscriber(request.resource.data);
+      allow read: if isAdmin();
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // 6. STOREFRONT SETTINGS COLLECTION
+    // Public read for website design & banners; admin only modification
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Default deny all other paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -18,6 +18,7 @@ import {
   Layers
 } from 'lucide-react';
 import { STORE_SETTINGS } from '../data/mockData';
+import { saveVipSubscriber } from '../lib/firebase';
 
 export default function Footer({ settings: propSettings, viewport = null }) {
   const [localSettings, setLocalSettings] = useState(propSettings || STORE_SETTINGS);
@@ -54,10 +55,19 @@ export default function Footer({ settings: propSettings, viewport = null }) {
     setOpenSection(openSection === name ? null : name);
   };
 
-  const handleVipSubmit = (e) => {
+  const handleVipSubmit = async (e) => {
     e.preventDefault();
     if (!vipEmail || !vipEmail.includes('@')) return;
+    const emailToSave = vipEmail.trim().toLowerCase();
     setVipSubscribed(true);
+    
+    try {
+      await saveVipSubscriber(emailToSave);
+      window.dispatchEvent(new CustomEvent('vip-subscribers-updated', { detail: { email: emailToSave } }));
+    } catch (err) {
+      console.warn('VIP save notification:', err);
+    }
+
     setTimeout(() => {
       setVipEmail('');
     }, 4000);
@@ -83,6 +93,15 @@ export default function Footer({ settings: propSettings, viewport = null }) {
     : isDesktop
     ? 'grid-cols-4 gap-10'
     : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12';
+
+  const watermarkClass = isMobile
+    ? 'text-3xl sm:text-4xl tracking-[0.08em]'
+    : isTablet
+    ? 'text-5xl sm:text-6xl tracking-[0.10em]'
+    : isDesktop
+    ? 'text-7xl lg:text-[7.5rem] tracking-[0.12em]'
+    : 'confelion-watermark';
+
 
   return (
     <footer className="w-full bg-black text-white border-t border-white/10 select-none relative overflow-hidden">
@@ -149,7 +168,7 @@ export default function Footer({ settings: propSettings, viewport = null }) {
         <div className={`max-w-6xl mx-auto grid ${trustGridClass}`}>
           {/* Pillar 1: Fast Dispatch */}
           <div 
-            onClick={() => setOpenPolicyModal('shipping')}
+            onClick={() => setActiveModal('shipping')}
             className="group cursor-pointer p-6 sm:p-8 bg-zinc-950/80 border border-white/10 hover:border-white/25 transition-all duration-300 flex flex-col items-center justify-center text-center"
           >
             <div className="w-12 h-12 rounded-full border border-white/20 bg-white/5 flex items-center justify-center mx-auto mb-3.5 text-white transition-transform duration-300 group-hover:scale-105">
@@ -165,7 +184,7 @@ export default function Footer({ settings: propSettings, viewport = null }) {
 
           {/* Pillar 2: 3-Day Exchange */}
           <div 
-            onClick={() => setOpenPolicyModal('exchange')}
+            onClick={() => setActiveModal('exchange')}
             className="group cursor-pointer p-6 sm:p-8 bg-zinc-950/80 border border-white/10 hover:border-white/25 transition-all duration-300 flex flex-col items-center justify-center text-center"
           >
             <div className="w-12 h-12 rounded-full border border-white/20 bg-white/5 flex items-center justify-center mx-auto mb-3.5 text-white transition-transform duration-300 group-hover:scale-105">
@@ -181,7 +200,7 @@ export default function Footer({ settings: propSettings, viewport = null }) {
 
           {/* Pillar 3: Luxury Packaging */}
           <div 
-            onClick={() => setOpenPolicyModal('shipping')}
+            onClick={() => setActiveModal('shipping')}
             className="group cursor-pointer p-6 sm:p-8 bg-zinc-950/80 border border-white/10 hover:border-white/25 transition-all duration-300 flex flex-col items-center justify-center text-center"
           >
             <div className="w-12 h-12 rounded-full border border-white/20 bg-white/5 flex items-center justify-center mx-auto mb-3.5 text-white transition-transform duration-300 group-hover:scale-105">
@@ -378,9 +397,9 @@ export default function Footer({ settings: propSettings, viewport = null }) {
         {/* =================================================================== */}
         {/* 4. MASSIVE ARCHITECTURAL BRAND WATERMARK */}
         {/* =================================================================== */}
-        <div className="mt-14 pt-8 border-t border-white/5 flex items-center justify-center overflow-hidden pointer-events-none select-none">
-          <span className="text-[13vw] font-black tracking-[0.18em] uppercase text-zinc-900/70 leading-none whitespace-nowrap block select-none">
-            CONFELION
+        <div className="mt-10 sm:mt-14 pt-6 sm:pt-8 border-t border-white/5 flex items-center justify-center overflow-hidden pointer-events-none select-none w-full px-2">
+          <span className={`${watermarkClass} font-black uppercase text-zinc-900/70 leading-none whitespace-nowrap block select-none text-center max-w-full`}>
+            {s.brand_signature_text || s.site_name || 'CONFELION'}
           </span>
         </div>
 

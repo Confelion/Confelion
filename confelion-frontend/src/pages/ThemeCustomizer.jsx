@@ -38,7 +38,7 @@ import Footer from '../components/Footer';
 import { STORE_SETTINGS, REELS_DATA, PRODUCTS_DATA } from '../data/mockData';
 import { fetchAPI } from '../lib/api';
 import { parseYouTubeUrl, saveDeviceVideo } from '../lib/videoStorage';
-import { syncSettingsToFirestore } from '../lib/firebase';
+import { syncSettingsToFirestore, fetchSettingsFromFirestore } from '../lib/firebase';
 import { uploadMediaAsset } from '../lib/mediaStorage';
 
 // Canvas image compression helper
@@ -142,6 +142,30 @@ export default function ThemeCustomizer() {
     } catch (e) {
       console.error(e);
     }
+
+    // Load latest live settings from backend and Firestore
+    Promise.all([
+      fetchAPI('/api/settings').catch(() => null),
+      fetchSettingsFromFirestore().catch(() => null)
+    ]).then(([backendSett, firestoreSett]) => {
+      if (backendSett || firestoreSett) {
+        setSettings((prev) => {
+          const merged = {
+            ...STORE_SETTINGS,
+            ...prev,
+            ...(backendSett || {}),
+            ...(firestoreSett || {})
+          };
+          if (merged.hero_image && !merged.hero_image_pc) {
+            merged.hero_image_pc = merged.hero_image;
+          }
+          if (merged.hero_image_pc && (!merged.hero_image_mobile || merged.hero_image_mobile === STORE_SETTINGS.hero_image_mobile)) {
+            merged.hero_image_mobile = merged.hero_image_pc;
+          }
+          return merged;
+        });
+      }
+    });
   }, [navigate]);
 
   const showToast = (msg) => {
@@ -185,11 +209,17 @@ export default function ThemeCustomizer() {
       window.dispatchEvent(new CustomEvent('settings-updated', { detail: settings }));
       window.dispatchEvent(new CustomEvent('reels-updated', { detail: reels }));
 
-      // Sync settings to Cloud Firestore
-      syncSettingsToFirestore(settings).catch(() => {});
+      // 1. Sync settings to Backend SQLite database
+      await fetchAPI('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings })
+      }).catch(err => console.warn('Backend settings save note:', err));
+
+      // 2. Sync settings to Cloud Firestore
+      await syncSettingsToFirestore(settings).catch(() => {});
 
       setIsDirty(false);
-      showToast('Theme published & saved live');
+      showToast('Theme published & saved live across all devices');
     } catch (err) {
       alert('Failed to save settings: ' + err.message);
     }
@@ -202,15 +232,42 @@ export default function ThemeCustomizer() {
     try {
       let imgUrl = null;
       try {
-        const uploaded = await uploadMediaAsset(file, 'banners');
+        const uploaded = await uploadMediaAsset(file, 'heroes');
         imgUrl = uploaded.url;
       } catch {
         imgUrl = await compressImage(file, 2200, 0.85);
       }
-      updateSettings({
-        [type === 'pc' ? 'hero_image_pc' : 'hero_image_mobile']: imgUrl
-      });
-      showToast(`Hero ${type.toUpperCase()} image uploaded`);
+
+      const updated = {
+        ...settings,
+        [type === 'pc' ? 'hero_image_pc' : 'hero_image_mobile']: imgUrl,
+        hero_image: imgUrl
+      };
+
+      if (type === 'pc' && (!updated.hero_image_mobile || updated.hero_image_mobile === STORE_SETTINGS.hero_image_mobile)) {
+        updated.hero_image_mobile = imgUrl;
+      }
+      if (type === 'mobile' && (!updated.hero_image_pc || updated.hero_image_pc === STORE_SETTINGS.hero_image_pc)) {
+        updated.hero_image_pc = imgUrl;
+      }
+
+      setSettings(updated);
+      setIsDirty(true);
+
+      // Auto-save immediately to local storage, backend SQLite, and Cloud Firestore!
+      try {
+        localStorage.setItem('confelion_settings', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: updated }));
+      } catch (e) {}
+
+      fetchAPI('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings: updated })
+      }).catch(() => {});
+
+      syncSettingsToFirestore(updated).catch(() => {});
+
+      showToast(`Hero ${type.toUpperCase()} image uploaded & published live`);
     } catch (err) {
       alert(err.message);
     }

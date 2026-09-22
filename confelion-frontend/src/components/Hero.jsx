@@ -49,20 +49,33 @@ export default function Hero({
     ? 'px-6 py-2.5 text-xs'
     : 'px-8 py-3 text-xs sm:text-sm';
 
+  const DEFAULT_PC = 'https://www.kaalvaish.in/cdn/shop/files/Kaalvaish_Hero_Banner_PC_1.png?v=1786518719&width=3840';
+  const DEFAULT_MOBILE = 'https://www.kaalvaish.in/cdn/shop/files/Kaalvaish_Hero_Banner_MOBILE.png?v=1786518421&width=3840';
+
+  // Intelligently fallback: if user uploaded a custom banner for PC, mobile will also display it instead of stale default
+  let resolvedPc = imagePc || DEFAULT_PC;
+  let resolvedMobile = imageMobile;
+  if (!resolvedMobile || resolvedMobile === DEFAULT_MOBILE) {
+    resolvedMobile = (resolvedPc && resolvedPc !== DEFAULT_PC) ? resolvedPc : (imageMobile || DEFAULT_MOBILE);
+  }
+  if (!resolvedPc || resolvedPc === DEFAULT_PC) {
+    resolvedPc = (resolvedMobile && resolvedMobile !== DEFAULT_MOBILE) ? resolvedMobile : (imagePc || DEFAULT_PC);
+  }
+
   return (
     <section className="relative w-full bg-black overflow-hidden select-none">
       {/* Responsive Images */}
       <div className="relative w-full">
         {viewport === 'mobile' ? (
           <img
-            src={imageMobile || imagePc}
+            src={resolvedMobile}
             alt="CONFELION All Black Fashion Mobile"
             className="w-full h-auto min-h-[62vh] max-h-[75vh] object-cover object-center block"
             priority="high"
           />
         ) : viewport === 'desktop' ? (
           <img
-            src={imagePc}
+            src={resolvedPc}
             alt="CONFELION All Black Fashion"
             className="w-full h-auto max-h-[92vh] object-cover object-top block"
             priority="high"
@@ -71,14 +84,14 @@ export default function Hero({
           <>
             {/* Desktop Image */}
             <img
-              src={imagePc}
+              src={resolvedPc}
               alt="CONFELION All Black Fashion"
               className="hidden md:block w-full h-auto max-h-[92vh] object-cover object-top"
               priority="high"
             />
             {/* Mobile Image */}
             <img
-              src={imageMobile}
+              src={resolvedMobile}
               alt="CONFELION All Black Fashion Mobile"
               className="block md:hidden w-full h-auto min-h-[75vh] object-cover object-center"
               priority="high"

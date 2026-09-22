@@ -1171,3 +1171,21 @@
 .share-circle-btn:active {
   transform: scale(0.94);
 }
+
+/* Architectural Brand Watermark in Footer */
+.confelion-watermark {
+  font-size: clamp(1.75rem, 7.5vw, 9rem);
+  letter-spacing: 0.06em;
+}
+
+@media (min-width: 640px) {
+  .confelion-watermark {
+    letter-spacing: 0.10em;
+  }
+}
+
+@media (min-width: 768px) {
+  .confelion-watermark {
+    letter-spacing: 0.12em;
+  }
+}

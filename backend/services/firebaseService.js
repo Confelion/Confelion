@@ -1,8 +1,8 @@
 require('dotenv').config();
 const crypto = require('crypto');
 
-const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'paypertap-76218';
-const FIREBASE_CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@paypertap-76218.iam.gserviceaccount.com';
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'confelion';
+const FIREBASE_CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL || 'firebase-adminsdk-fbsvc@confelion.iam.gserviceaccount.com';
 let FIREBASE_PRIVATE_KEY = process.env.FIREBASE_PRIVATE_KEY || '';
 
 // Clean private key formatting if loaded with escaped newlines

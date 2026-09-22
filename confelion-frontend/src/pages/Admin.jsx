@@ -42,7 +42,10 @@ import {
   ShieldCheck,
   Truck,
   Wallet,
-  Building2
+  Building2,
+  Copy,
+  RotateCcw,
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../lib/AuthContext';
 import { 
@@ -56,7 +59,17 @@ import {
 } from '../lib/api';
 import { STORE_SETTINGS } from '../data/mockData';
 import { uploadMediaAsset } from '../lib/mediaStorage';
-import { fetchFirestoreOrders } from '../lib/firebase';
+import { 
+  fetchFirestoreOrders, 
+  saveProductToFirestore, 
+  deleteFirestoreProduct, 
+  fetchFirestoreProducts, 
+  fetchVipSubscribers, 
+  deleteVipSubscriber, 
+  resetFirestoreDashboard,
+  syncSettingsToFirestore,
+  fetchSettingsFromFirestore
+} from '../lib/firebase';
 import { generateOrderInvoicePDF } from '../lib/invoiceGenerator';
 
 // Compress and convert image file to optimized Base64 data URL (max 1200px, 0.85 jpeg)
@@ -161,8 +174,19 @@ export default function Admin() {
   const [orderSearchQuery, setOrderSearchQuery] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState('All');
 
-  // Customers search
+  // Customers search & sub-tabs
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [customerSubTab, setCustomerSubTab] = useState('customers'); // 'customers' | 'vip'
+
+  // VIP Subscribers state
+  const [vipSubscribers, setVipSubscribers] = useState([]);
+  const [vipSearchQuery, setVipSearchQuery] = useState('');
+  const [isCopiedVip, setIsCopiedVip] = useState(false);
+
+  // 2FA Reset Dashboard state
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resetConfirmInput, setResetConfirmInput] = useState('');
+  const [isResetting, setIsResetting] = useState(false);
 
   // Modals
   const [productModalMode, setProductModalMode] = useState(null); // 'add' | 'edit' | null
@@ -245,6 +269,47 @@ export default function Admin() {
         })
         .catch((err) => {
           console.warn('Firestore orders sync note in admin:', err);
+        });
+
+      // Merge Cloud Firestore products non-blockingly in the background
+      fetchFirestoreProducts()
+        .then((firestoreProducts) => {
+          if (Array.isArray(firestoreProducts) && firestoreProducts.length > 0) {
+            setProducts((prev) => {
+              const map = new Map();
+              prev.forEach(p => map.set(p.handle || p.id, p));
+              firestoreProducts.forEach(p => {
+                const key = p.handle || p.id;
+                if (!map.has(key)) map.set(key, p);
+              });
+              return Array.from(map.values());
+            });
+          }
+        })
+        .catch((err) => {
+          console.warn('Firestore products sync note in admin:', err);
+        });
+
+      // Fetch VIP Subscribers from Cloud Firestore / Local cache
+      fetchVipSubscribers()
+        .then((vips) => {
+          if (Array.isArray(vips)) {
+            setVipSubscribers(vips);
+          }
+        })
+        .catch((err) => {
+          console.warn('VIP subscribers sync note in admin:', err);
+        });
+
+      // Merge Cloud Firestore settings non-blockingly
+      fetchSettingsFromFirestore()
+        .then((fsSett) => {
+          if (fsSett && typeof fsSett === 'object') {
+            setSettings((prev) => ({ ...prev, ...fsSett }));
+          }
+        })
+        .catch((err) => {
+          console.warn('Firestore settings sync note in admin:', err);
         });
     } catch (e) {
       console.error(e);
@@ -377,12 +442,18 @@ export default function Admin() {
     const handleProductsUpdate = () => loadAdminData();
     const handleCustomersUpdate = () => loadAdminData();
     const handleSettingsUpdate = () => loadAdminData();
+    const handleVipUpdate = () => {
+      fetchVipSubscribers().then((v) => {
+        if (Array.isArray(v)) setVipSubscribers(v);
+      });
+    };
     const handleStorageUpdate = (e) => {
       if (
         e.key === 'confelion_orders' || 
         e.key === 'confelion_products' || 
         e.key === 'confelion_settings' ||
-        e.key === 'confelion_customers'
+        e.key === 'confelion_customers' ||
+        e.key === 'confelion_vip_subscribers'
       ) {
         loadAdminData();
       }
@@ -392,6 +463,7 @@ export default function Admin() {
     window.addEventListener('products-updated', handleProductsUpdate);
     window.addEventListener('customers-updated', handleCustomersUpdate);
     window.addEventListener('settings-updated', handleSettingsUpdate);
+    window.addEventListener('vip-subscribers-updated', handleVipUpdate);
     window.addEventListener('storage', handleStorageUpdate);
 
     return () => {
@@ -399,6 +471,7 @@ export default function Admin() {
       window.removeEventListener('products-updated', handleProductsUpdate);
       window.removeEventListener('customers-updated', handleCustomersUpdate);
       window.removeEventListener('settings-updated', handleSettingsUpdate);
+      window.removeEventListener('vip-subscribers-updated', handleVipUpdate);
       window.removeEventListener('storage', handleStorageUpdate);
     };
   }, []);
@@ -594,16 +667,45 @@ export default function Admin() {
     try {
       let imgUrl = null;
       try {
-        const uploaded = await uploadMediaAsset(file, 'banners');
+        const uploaded = await uploadMediaAsset(file, 'heroes');
         imgUrl = uploaded.url;
       } catch {
         imgUrl = await compressImageFile(file, 2000, 0.85);
       }
-      setSettings((prev) => ({
-        ...prev,
-        [type === 'pc' ? 'hero_image_pc' : 'hero_image_mobile']: imgUrl
-      }));
-      showToast(`Hero ${type === 'pc' ? 'Desktop' : 'Mobile'} image updated from device`);
+
+      const updatedSettings = {
+        ...settings,
+        [type === 'pc' ? 'hero_image_pc' : 'hero_image_mobile']: imgUrl,
+        hero_image: imgUrl
+      };
+
+      // If mobile hasn't been set yet and user uploads PC, apply to mobile as well
+      if (type === 'pc' && (!updatedSettings.hero_image_mobile || updatedSettings.hero_image_mobile === STORE_SETTINGS.hero_image_mobile)) {
+        updatedSettings.hero_image_mobile = imgUrl;
+      }
+      // If PC hasn't been set yet and user uploads mobile, apply to PC as well
+      if (type === 'mobile' && (!updatedSettings.hero_image_pc || updatedSettings.hero_image_pc === STORE_SETTINGS.hero_image_pc)) {
+        updatedSettings.hero_image_pc = imgUrl;
+      }
+
+      setSettings(updatedSettings);
+
+      // 1. Immediately cache locally
+      try {
+        localStorage.setItem('confelion_settings', JSON.stringify(updatedSettings));
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: updatedSettings }));
+      } catch (e) {}
+
+      // 2. Persist to Backend SQLite database so ALL devices and browsers see it
+      fetchAPI('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings: updatedSettings })
+      }).catch(err => console.warn('Backend settings save note:', err));
+
+      // 3. Persist to Cloud Firestore so mobile devices outside localhost see it
+      syncSettingsToFirestore(updatedSettings).catch(err => console.warn('Firestore settings sync note:', err));
+
+      showToast(`Hero ${type === 'pc' ? 'Desktop' : 'Mobile'} image updated & published live!`);
     } catch (err) {
       alert('Hero upload error: ' + err.message);
     }
@@ -660,6 +762,12 @@ export default function Admin() {
         };
         setProducts((prev) => [newProduct, ...prev.filter((p) => p.handle !== newProduct.handle)]);
       }
+
+      // Sync product to Cloud Firestore product catalog
+      saveProductToFirestore(payload).catch((fsErr) => {
+        console.warn('Firestore product sync note:', fsErr.message);
+      });
+
       setProductModalMode(null);
       loadAdminData();
     } catch (err) {
@@ -671,11 +779,96 @@ export default function Admin() {
     if (!window.confirm(`Are you sure you want to permanently remove "${prod.title}"?`)) return;
     try {
       await fetchAPI(`/api/admin/products/${prod.handle || prod.id}`, { method: 'DELETE' });
+      // Delete/archive in Cloud Firestore
+      deleteFirestoreProduct(prod.handle || prod.id).catch((fsErr) => {
+        console.warn('Firestore delete note:', fsErr.message);
+      });
       showToast(`Removed product "${prod.title}"`);
       loadAdminData();
     } catch (err) {
       alert(err.message);
     }
+  };
+
+  // Reset Dashboard 2FA Executor
+  const handleExecuteResetDashboard = async () => {
+    if (resetConfirmInput.trim().toUpperCase() !== 'RESET') {
+      alert('Please type RESET exactly to authorize database purge.');
+      return;
+    }
+    setIsResetting(true);
+    try {
+      // 1. Purge Cloud Firestore orders and VIP subscribers
+      await resetFirestoreDashboard();
+
+      // 2. Purge backend SQLite orders and test records
+      try {
+        await fetchAPI('/api/admin/reset-dashboard', {
+          method: 'POST',
+          body: JSON.stringify({ confirmText: 'RESET' })
+        });
+      } catch (backendErr) {
+        console.warn('Backend reset note:', backendErr.message);
+      }
+
+      // 3. Clear local states
+      setOrders([]);
+      setVipSubscribers([]);
+      setRevenue({
+        totalRevenue: 0,
+        todayRevenue: 0,
+        monthlyRevenue: 0,
+        growthRate: '0.0%',
+        orderCount: 0
+      });
+
+      setShowResetModal(false);
+      setResetConfirmInput('');
+      showToast('Dashboard & database successfully reset to clean state');
+      await loadAdminData();
+    } catch (err) {
+      alert(`Reset error: ${err.message}`);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleCopyVipEmails = () => {
+    if (!vipSubscribers || vipSubscribers.length === 0) return;
+    const emailList = vipSubscribers.map(v => v.email).filter(Boolean).join(', ');
+    navigator.clipboard.writeText(emailList);
+    setIsCopiedVip(true);
+    showToast(`Copied ${vipSubscribers.length} VIP email(s) to clipboard`);
+    setTimeout(() => setIsCopiedVip(false), 3000);
+  };
+
+  const handleDeleteVip = async (vip) => {
+    if (!window.confirm(`Remove ${vip.email} from VIP inner circle?`)) return;
+    await deleteVipSubscriber(vip.id || vip.email);
+    setVipSubscribers(prev => prev.filter(v => v.email !== vip.email && v.id !== vip.id));
+    showToast(`Removed ${vip.email}`);
+  };
+
+  const exportVipSubscribersCSV = () => {
+    if (!vipSubscribers || vipSubscribers.length === 0) {
+      alert('No VIP subscribers to export');
+      return;
+    }
+    const headers = ['Email', 'Subscribed At', 'Source', 'Status'];
+    const rows = vipSubscribers.map(v => [
+      `"${v.email || ''}"`,
+      `"${v.subscribed_at || v.created_at || ''}"`,
+      `"${v.source || 'footer_vip_button'}"`,
+      `"${v.status || 'active'}"`
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `confelion_vip_subscribers_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleQuickStockChange = async (prod, delta) => {
@@ -714,11 +907,19 @@ export default function Admin() {
   const handleSaveSettings = async (e) => {
     if (e) e.preventDefault();
     try {
+      try {
+        localStorage.setItem('confelion_settings', JSON.stringify(settings));
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: settings }));
+      } catch (err) {}
+
       await fetchAPI('/api/admin/settings', {
         method: 'POST',
-        body: JSON.stringify(settings)
+        body: JSON.stringify({ settings })
       });
-      showToast('Storefront & payment settings saved');
+
+      await syncSettingsToFirestore(settings).catch(() => {});
+
+      showToast('Storefront & payment settings published live across all devices');
     } catch (err) {
       alert(err.message);
     }
@@ -794,6 +995,12 @@ export default function Admin() {
     if (!customerSearchQuery.trim()) return true;
     const q = customerSearchQuery.toLowerCase();
     return c.name?.toLowerCase().includes(q) || c.email?.toLowerCase().includes(q) || c.phone?.includes(q) || c.city?.toLowerCase().includes(q);
+  });
+
+  const filteredVipSubscribers = vipSubscribers.filter(v => {
+    if (!vipSearchQuery.trim()) return true;
+    const q = vipSearchQuery.toLowerCase();
+    return v.email?.toLowerCase().includes(q) || v.source?.toLowerCase().includes(q);
   });
 
   const totalInventoryCount = products.reduce((sum, p) => sum + (Number(p.inventory) || 0), 0);
@@ -1025,6 +1232,18 @@ export default function Admin() {
               title="Refresh Storefront & Orders Sync"
             >
               <RefreshCw className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={() => {
+                setResetConfirmInput('');
+                setShowResetModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-2.5 py-1.5 rounded-lg transition-colors shadow-2xs"
+              title="Reset orders, sales metrics, and VIP subscribers"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+              <span>Reset Dashboard</span>
             </button>
 
             <Link
@@ -1496,85 +1715,243 @@ export default function Admin() {
             <div className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div>
-                  <h2 className="text-xl font-bold text-[#202223]">Customers</h2>
-                  <p className="text-xs text-[#6d7175]">Registered client roster and order histories.</p>
+                  <h2 className="text-xl font-bold text-[#202223]">Customers & Audience</h2>
+                  <p className="text-xs text-[#6d7175]">Manage registered client rosters, order histories, and VIP drop access subscribers.</p>
                 </div>
 
+                <div className="flex items-center gap-2">
+                  {customerSubTab === 'vip' ? (
+                    <>
+                      <button
+                        onClick={handleCopyVipEmails}
+                        className="px-3 py-2 bg-white hover:bg-zinc-50 border border-[#d2d5d8] text-xs font-semibold text-[#202223] rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors"
+                        title="Copy all VIP emails to clipboard"
+                      >
+                        {isCopiedVip ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
+                            <span className="text-emerald-700">Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5 text-zinc-600" />
+                            <span>Copy All Emails</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        onClick={exportVipSubscribersCSV}
+                        className="px-3 py-2 bg-[#1a1a1a] hover:bg-[#303030] text-xs font-semibold text-white rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Export VIP CSV</span>
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={exportCustomersCSV}
+                      className="px-3 py-2 bg-white hover:bg-zinc-50 border border-[#d2d5d8] text-xs font-semibold text-[#202223] rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <Download className="w-3.5 h-3.5 text-zinc-600" />
+                      <span>Export CSV</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Audience Sub-Tab Pills */}
+              <div className="flex items-center gap-2 border-b border-[#e1e3e5] pb-2">
                 <button
-                  onClick={exportCustomersCSV}
-                  className="px-3 py-2 bg-white hover:bg-zinc-50 border border-[#d2d5d8] text-xs font-semibold text-[#202223] rounded-lg shadow-2xs flex items-center gap-1.5 transition-colors"
+                  onClick={() => setCustomerSubTab('customers')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors ${
+                    customerSubTab === 'customers'
+                      ? 'bg-[#1a1a1a] text-white shadow-2xs'
+                      : 'bg-white text-zinc-600 border border-[#d2d5d8] hover:bg-zinc-50'
+                  }`}
                 >
-                  <Download className="w-3.5 h-3.5 text-zinc-600" />
-                  <span>Export CSV</span>
+                  Registered Patrons ({customers.length})
+                </button>
+                <button
+                  onClick={() => setCustomerSubTab('vip')}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 ${
+                    customerSubTab === 'vip'
+                      ? 'bg-[#1a1a1a] text-white shadow-2xs'
+                      : 'bg-white text-zinc-600 border border-[#d2d5d8] hover:bg-zinc-50'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                  <span>VIP Drop Subscribers ({vipSubscribers.length})</span>
                 </button>
               </div>
 
-              {/* Customers Table Card */}
-              <div className="bg-white border border-[#e1e3e5] rounded-xl shadow-xs overflow-hidden">
-                <div className="p-3.5 border-b border-[#e1e3e5] bg-[#fafbfb]">
-                  <div className="relative max-w-sm">
-                    <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                    <input
-                      type="text"
-                      placeholder="Search patrons by name, email, city..."
-                      value={customerSearchQuery}
-                      onChange={(e) => setCustomerSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#d2d5d8] rounded-lg text-xs text-[#202223] focus:outline-none focus:border-black"
-                    />
+              {/* VIEW 1: REGISTERED CUSTOMERS TABLE */}
+              {customerSubTab === 'customers' && (
+                <div className="bg-white border border-[#e1e3e5] rounded-xl shadow-xs overflow-hidden">
+                  <div className="p-3.5 border-b border-[#e1e3e5] bg-[#fafbfb]">
+                    <div className="relative max-w-sm">
+                      <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search patrons by name, email, city..."
+                        value={customerSearchQuery}
+                        onChange={(e) => setCustomerSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#d2d5d8] rounded-lg text-xs text-[#202223] focus:outline-none focus:border-black"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="bg-[#f9fafb] border-b border-[#e1e3e5] text-[#6d7175] font-semibold uppercase text-[10px] tracking-wider">
+                          <th className="py-3 px-4">Patron</th>
+                          <th className="py-3 px-4">Contact</th>
+                          <th className="py-3 px-4">Location</th>
+                          <th className="py-3 px-4">Orders</th>
+                          <th className="py-3 px-4">Total Spent</th>
+                          <th className="py-3 px-4">Status</th>
+                          <th className="py-3 px-4 text-center">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#f0f0f0]">
+                        {filteredCustomers.map((cust) => (
+                          <tr key={cust.id} className="hover:bg-zinc-50/80 transition-colors">
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-[#202223]">{cust.name}</div>
+                              <div className="text-[11px] text-[#6d7175]">{cust.email}</div>
+                            </td>
+                            <td className="py-3 px-4 text-[#4a4a4a] whitespace-nowrap">
+                              {cust.phone || 'N/A'}
+                            </td>
+                            <td className="py-3 px-4 text-[#4a4a4a] whitespace-nowrap">
+                              {cust.city || 'India'}
+                            </td>
+                            <td className="py-3 px-4 font-bold text-[#202223]">
+                              {cust.total_orders || 1}
+                            </td>
+                            <td className="py-3 px-4 font-mono font-bold text-[#202223]">
+                              ₹{Number(cust.total_spent || 0).toLocaleString('en-IN')}
+                            </td>
+                            <td className="py-3 px-4 whitespace-nowrap">
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                {cust.status || 'Active'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center whitespace-nowrap">
+                              <button
+                                onClick={() => setSelectedCustomerModal(cust)}
+                                className="px-2.5 py-1 bg-white hover:bg-zinc-100 border border-[#d2d5d8] rounded text-xs font-semibold text-zinc-700 shadow-2xs"
+                              >
+                                Profile
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </div>
+              )}
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
-                    <thead>
-                      <tr className="bg-[#f9fafb] border-b border-[#e1e3e5] text-[#6d7175] font-semibold uppercase text-[10px] tracking-wider">
-                        <th className="py-3 px-4">Patron</th>
-                        <th className="py-3 px-4">Contact</th>
-                        <th className="py-3 px-4">Location</th>
-                        <th className="py-3 px-4">Orders</th>
-                        <th className="py-3 px-4">Total Spent</th>
-                        <th className="py-3 px-4">Status</th>
-                        <th className="py-3 px-4 text-center">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-[#f0f0f0]">
-                      {filteredCustomers.map((cust) => (
-                        <tr key={cust.id} className="hover:bg-zinc-50/80 transition-colors">
-                          <td className="py-3 px-4">
-                            <div className="font-bold text-[#202223]">{cust.name}</div>
-                            <div className="text-[11px] text-[#6d7175]">{cust.email}</div>
-                          </td>
-                          <td className="py-3 px-4 text-[#4a4a4a] whitespace-nowrap">
-                            {cust.phone || 'N/A'}
-                          </td>
-                          <td className="py-3 px-4 text-[#4a4a4a] whitespace-nowrap">
-                            {cust.city || 'India'}
-                          </td>
-                          <td className="py-3 px-4 font-bold text-[#202223]">
-                            {cust.total_orders || 1}
-                          </td>
-                          <td className="py-3 px-4 font-mono font-bold text-[#202223]">
-                            ₹{Number(cust.total_spent || 0).toLocaleString('en-IN')}
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap">
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                              {cust.status || 'Active'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-center whitespace-nowrap">
-                            <button
-                              onClick={() => setSelectedCustomerModal(cust)}
-                              className="px-2.5 py-1 bg-white hover:bg-zinc-100 border border-[#d2d5d8] rounded text-xs font-semibold text-zinc-700 shadow-2xs"
-                            >
-                              Profile
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+              {/* VIEW 2: VIP DROP SUBSCRIBERS TABLE */}
+              {customerSubTab === 'vip' && (
+                <div className="bg-white border border-[#e1e3e5] rounded-xl shadow-xs overflow-hidden">
+                  <div className="p-3.5 border-b border-[#e1e3e5] flex flex-wrap items-center justify-between gap-3 bg-[#fafbfb]">
+                    <div className="relative max-w-sm flex-1">
+                      <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Search VIP subscriber emails..."
+                        value={vipSearchQuery}
+                        onChange={(e) => setVipSearchQuery(e.target.value)}
+                        className="w-full pl-8 pr-3 py-1.5 bg-white border border-[#d2d5d8] rounded-lg text-xs text-[#202223] focus:outline-none focus:border-black"
+                      />
+                    </div>
+                    <div className="text-xs text-[#6d7175]">
+                      Total captured emails: <strong className="text-black font-mono">{vipSubscribers.length}</strong>
+                    </div>
+                  </div>
+
+                  {filteredVipSubscribers.length === 0 ? (
+                    <div className="p-12 text-center text-zinc-500 space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-zinc-100 flex items-center justify-center mx-auto text-zinc-400">
+                        <Mail className="w-5 h-5" />
+                      </div>
+                      <p className="text-sm font-semibold text-zinc-800">No VIP subscribers found</p>
+                      <p className="text-xs text-zinc-500 max-w-md mx-auto">
+                        When visitors enter their email into the &quot;Join VIP&quot; inner-circle form in the footer, their emails are automatically stored in Cloud Firestore and will appear here in real-time.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr className="bg-[#f9fafb] border-b border-[#e1e3e5] text-[#6d7175] font-semibold uppercase text-[10px] tracking-wider">
+                            <th className="py-3 px-4">Subscriber Email</th>
+                            <th className="py-3 px-4">Date Joined</th>
+                            <th className="py-3 px-4">Capture Source</th>
+                            <th className="py-3 px-4">Status</th>
+                            <th className="py-3 px-4 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#f0f0f0]">
+                          {filteredVipSubscribers.map((vip) => (
+                            <tr key={vip.id || vip.email} className="hover:bg-zinc-50/80 transition-colors">
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-[#202223] font-mono">{vip.email}</span>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(vip.email);
+                                      showToast(`Copied ${vip.email}`);
+                                    }}
+                                    title="Copy email"
+                                    className="p-1 text-zinc-400 hover:text-black transition-colors"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 text-[#4a4a4a] whitespace-nowrap">
+                                {vip.subscribed_at 
+                                  ? new Date(vip.subscribed_at).toLocaleDateString('en-IN', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })
+                                  : 'Recently registered'}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono bg-zinc-100 text-zinc-800 border border-zinc-200">
+                                  {vip.source || 'Storefront Footer VIP'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  Active VIP
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-right whitespace-nowrap">
+                                <button
+                                  onClick={() => handleDeleteVip(vip)}
+                                  className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors"
+                                  title="Delete subscriber"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -1824,12 +2201,37 @@ export default function Admin() {
                 )}
               </div>
 
-              <button
-                onClick={handleSaveSettings}
-                className="px-6 py-2.5 bg-[#1a1a1a] hover:bg-[#303030] text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
-              >
-                Save Payment Settings
-              </button>
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  onClick={handleSaveSettings}
+                  className="px-6 py-2.5 bg-[#1a1a1a] hover:bg-[#303030] text-white text-xs font-semibold rounded-lg shadow-sm transition-colors"
+                >
+                  Save Payment Settings
+                </button>
+              </div>
+
+              {/* Danger Zone: Store & Database Reset */}
+              <div className="bg-red-50/50 border border-red-200 rounded-xl p-6 shadow-xs space-y-3 mt-6">
+                <div className="flex items-center gap-2 text-rose-700">
+                  <ShieldAlert className="w-5 h-5 shrink-0" />
+                  <h3 className="text-sm font-bold text-rose-900">Danger Zone: Reset Storefront & Database</h3>
+                </div>
+                <p className="text-xs text-rose-700 leading-relaxed">
+                  Permanently purge all test orders, gross revenue counters, patron profiles, and VIP subscriber lists across Cloud Firestore and SQLite. Protected with two-factor authorization requiring manual typing of <strong className="font-mono bg-white px-1 py-0.5 rounded border border-rose-300">RESET</strong>.
+                </p>
+                <div className="pt-1">
+                  <button
+                    onClick={() => {
+                      setResetConfirmInput('');
+                      setShowResetModal(true);
+                    }}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Reset Store & Dashboard</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -3018,6 +3420,103 @@ export default function Admin() {
                 className="px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-lg"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =================================================================== */}
+      {/* 6. RESET DASHBOARD 2FA CONFIRMATION MODAL */}
+      {/* =================================================================== */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+          <div className="w-full max-w-lg bg-white border border-red-200 rounded-2xl p-6 shadow-2xl relative space-y-4">
+            <button
+              onClick={() => {
+                setShowResetModal(false);
+                setResetConfirmInput('');
+              }}
+              className="absolute top-4 right-4 text-[#6d7175] hover:text-[#202223] p-1"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 text-red-600">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+              </div>
+              <div>
+                <h3 className="text-base font-black uppercase tracking-wider text-zinc-900">
+                  Reset Dashboard & Database
+                </h3>
+                <p className="text-xs text-red-600 font-semibold">
+                  Two-Factor Authorization Required
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-red-50/70 border border-red-200 rounded-xl text-xs space-y-2 text-zinc-700">
+              <p className="font-semibold text-red-900">
+                This operation will permanently purge the following from both Cloud Firestore & local database:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-[11px] text-zinc-600">
+                <li>All customer orders & transactions</li>
+                <li>All test customer profiles & order histories</li>
+                <li>All VIP inner-circle email subscribers</li>
+                <li>Reset gross revenue, total orders, and analytics counters to zero</li>
+              </ul>
+              <p className="text-[11px] text-zinc-500 pt-1 border-t border-red-200/60">
+                Note: Product catalog and storefront theme will remain preserved.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-zinc-800">
+                Type <span className="font-mono bg-zinc-100 text-red-700 px-1.5 py-0.5 rounded border border-zinc-300">RESET</span> below to confirm:
+              </label>
+              <input
+                type="text"
+                value={resetConfirmInput}
+                onChange={(e) => setResetConfirmInput(e.target.value)}
+                placeholder="type RESET here"
+                autoFocus
+                className="w-full px-3.5 py-2.5 bg-white border-2 border-zinc-300 focus:border-red-600 rounded-xl text-sm font-mono tracking-widest uppercase focus:outline-none transition-colors"
+              />
+            </div>
+
+            <div className="pt-2 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetModal(false);
+                  setResetConfirmInput('');
+                }}
+                className="px-4 py-2 text-xs font-semibold text-zinc-600 hover:text-black border border-zinc-300 rounded-xl hover:bg-zinc-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={resetConfirmInput.trim().toUpperCase() !== 'RESET' || isResetting}
+                onClick={handleExecuteResetDashboard}
+                className={`px-5 py-2 text-xs font-black uppercase tracking-wider rounded-xl transition-all flex items-center gap-2 ${
+                  resetConfirmInput.trim().toUpperCase() === 'RESET' && !isResetting
+                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-md active:scale-95'
+                    : 'bg-zinc-200 text-zinc-400 cursor-not-allowed border border-zinc-300'
+                }`}
+              >
+                {isResetting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Purging Data...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="w-4 h-4" />
+                    <span>Permanently Reset</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

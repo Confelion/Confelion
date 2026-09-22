@@ -66,43 +66,62 @@ module.exports=db=>{
  const r=require('express').Router()
  r.use(auth,admin)
  
- // Upload Hero image with high-efficiency compression & R2 storage
- r.post('/upload-hero', upload.single('image'), async (q,s)=>{
-   try{
-     if(!q.file) return s.status(400).json({error:'No image file provided (field: image)'})
-     if (isR2Configured()) {
-       const res = await compressAndUploadToR2({
-         buffer: q.file.buffer,
-         originalName: q.file.originalname,
-         folder: 'heroes',
-         mimetype: q.file.mimetype
-       })
-       db.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').run('hero_image', res.url)
-       return s.json({
-         url: res.url,
-         success: true,
-         compressed: true,
-         originalSize: res.originalSize,
-         compressedSize: res.compressedSize,
-         savingsPercent: res.savingsPercent,
-         deduplicated: res.deduplicated,
-         provider: 'cloudflare-r2'
-       })
-     }
-     const {url, size: compressedSize} = await saveCompressedHeroImage(q.file.buffer, q.file.originalname)
-     db.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').run('hero_image', url)
-     s.json({
-       url,
-       success: true,
-       compressed: true,
-       originalSize: q.file.size,
-       compressedSize,
-       savingsPercent: Math.round((1 - compressedSize / q.file.size) * 100)
-     })
-   }catch(e){
-     s.status(500).json({error:e.message})
-   }
- })
+  // Upload Hero image with high-efficiency compression & R2 storage
+  r.post('/upload-hero', upload.single('image'), async (q,s)=>{
+    try{
+      if(!q.file) return s.status(400).json({error:'No image file provided (field: image)'})
+      const bannerType = q.body?.type || q.query?.type || 'pc'
+      let heroUrl = null
+      let uploadResult = null
+
+      if (isR2Configured()) {
+        const res = await compressAndUploadToR2({
+          buffer: q.file.buffer,
+          originalName: q.file.originalname,
+          folder: 'heroes',
+          mimetype: q.file.mimetype
+        })
+        heroUrl = res.url
+        uploadResult = {
+          url: res.url,
+          success: true,
+          compressed: true,
+          originalSize: res.originalSize,
+          compressedSize: res.compressedSize,
+          savingsPercent: res.savingsPercent,
+          deduplicated: res.deduplicated,
+          provider: 'cloudflare-r2'
+        }
+      } else {
+        const {url, size: compressedSize} = await saveCompressedHeroImage(q.file.buffer, q.file.originalname)
+        heroUrl = url
+        uploadResult = {
+          url,
+          success: true,
+          compressed: true,
+          originalSize: q.file.size,
+          compressedSize,
+          savingsPercent: Math.round((1 - compressedSize / q.file.size) * 100)
+        }
+      }
+
+      const tx = db.transaction(() => {
+        db.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').run('hero_image', heroUrl)
+        if (bannerType === 'mobile') {
+          db.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').run('hero_image_mobile', heroUrl)
+        } else {
+          db.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').run('hero_image_pc', heroUrl)
+          // Also set mobile if not yet distinct
+          db.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').run('hero_image_mobile', heroUrl)
+        }
+      })
+      tx()
+
+      return s.json(uploadResult)
+    }catch(e){
+      s.status(500).json({error:e.message})
+    }
+  })
 
  // Upload Size Chart image with auto-compression & R2 storage
  r.post('/upload-size-chart', upload.single('image'), async (q,s)=>{
@@ -683,20 +702,53 @@ module.exports=db=>{
     }catch(e){ s.status(500).json({error:e.message}) }
   })
 
-  // SETTINGS - Bulk update (admin only)
-  r.put('/settings', (q,s)=>{
-    try{
-      const {settings} = q.body
-      if(!settings || typeof settings !== 'object') return s.status(400).json({error:'settings object required'})
-      const tx = db.transaction(()=>{
-        for(const [key, value] of Object.entries(settings)){
-          db.prepare('INSERT OR REPLACE INTO settings(key,value,updated_at) VALUES(?,?,CURRENT_TIMESTAMP)').run(key, value)
+  // SETTINGS - Bulk update (admin only, accepts PUT and POST, flat or nested {settings})
+  const handleBulkSettingsUpdate = (q, s) => {
+    try {
+      const incoming = (q.body && q.body.settings && typeof q.body.settings === 'object') ? q.body.settings : (q.body || {});
+      if (!incoming || typeof incoming !== 'object' || Object.keys(incoming).length === 0) {
+        return s.status(400).json({ error: 'settings object required' });
+      }
+      const tx = db.transaction(() => {
+        for (const [key, value] of Object.entries(incoming)) {
+          const valStr = typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value ?? '');
+          db.prepare('INSERT OR REPLACE INTO settings(key, value, updated_at) VALUES(?, ?, CURRENT_TIMESTAMP)').run(key, valStr);
         }
+        // If hero_image_pc is set, ensure hero_image is also synchronized
+        if (incoming.hero_image_pc) {
+          db.prepare('INSERT OR REPLACE INTO settings(key, value, updated_at) VALUES(?, ?, CURRENT_TIMESTAMP)').run('hero_image', String(incoming.hero_image_pc));
+        }
+      });
+      tx();
+      s.json({ success: true, settings: incoming });
+    } catch (e) {
+      s.status(500).json({ error: e.message });
+    }
+  };
+
+  r.put('/settings', handleBulkSettingsUpdate);
+  r.post('/settings', handleBulkSettingsUpdate);
+
+  // RESET DASHBOARD - Clear orders, order items, and test patrons (keeps products and admin accounts)
+  r.post('/reset-dashboard', (q, s) => {
+    try {
+      const { confirmText } = q.body || {}
+      if (confirmText !== 'RESET') {
+        return s.status(400).json({ error: 'Safety confirmation keyword RESET required.' })
+      }
+      const tx = db.transaction(() => {
+        db.prepare('DELETE FROM order_items').run()
+        db.prepare('DELETE FROM orders').run()
+        // Purge non-admin test users created during testing
+        db.prepare("DELETE FROM users WHERE role != 'admin' AND email NOT LIKE '%admin%' AND email NOT LIKE '%confelion%'").run()
       })
       tx()
-      s.json({success:true})
-    }catch(e){ s.status(500).json({error:e.message}) }
+      s.json({ success: true, message: 'Backend dashboard and orders reset successfully.' })
+    } catch (e) {
+      s.status(500).json({ error: e.message })
+    }
   })
 
   return r
 }
+
