@@ -10,28 +10,92 @@ export default function LookbookReels({
   subtitle: propSubtitle = 'Curated motion lookbook & editorial unboxing',
   viewport = null
 }) {
-  const [reels, setReels] = useState(propReels || REELS_DATA);
-  const [activeReel, setActiveReel] = useState(null);
-  const [resolvedUrls, setResolvedUrls] = useState({});
-
-  // Sync with propReels or localStorage
-  useEffect(() => {
-    if (propReels) {
-      setReels(propReels);
-      return;
-    }
+  const getInitialReels = () => {
+    if (propReels && propReels.length > 0) return propReels;
     try {
       const stored = localStorage.getItem('confelion_reels');
       if (stored) {
-        setReels(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      const sett = localStorage.getItem('confelion_settings');
+      if (sett) {
+        const parsed = JSON.parse(sett);
+        if (Array.isArray(parsed.reels_data) && parsed.reels_data.length > 0) return parsed.reels_data;
       }
     } catch {}
+    return REELS_DATA;
+  };
+
+  const [reels, setReels] = useState(getInitialReels);
+  const [activeReel, setActiveReel] = useState(null);
+  const [resolvedUrls, setResolvedUrls] = useState({});
+
+  // Sync with propReels, localStorage, or remote settings
+  useEffect(() => {
+    if (propReels && Array.isArray(propReels) && propReels.length > 0) {
+      setReels(propReels);
+    } else {
+      try {
+        const stored = localStorage.getItem('confelion_reels');
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) setReels(parsed);
+        }
+      } catch {}
+    }
 
     const handleReelsUpdate = (e) => {
-      if (e.detail) setReels(e.detail);
+      if (e.detail && Array.isArray(e.detail) && e.detail.length > 0) {
+        setReels(e.detail);
+      }
     };
+
+    const handleSettingsUpdate = (e) => {
+      if (e.detail?.reels_data && Array.isArray(e.detail.reels_data) && e.detail.reels_data.length > 0) {
+        setReels(e.detail.reels_data);
+      }
+    };
+
+    const handleStorage = (e) => {
+      if (e.key === 'confelion_reels' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed) && parsed.length > 0) setReels(parsed);
+        } catch {}
+      } else if (e.key === 'confelion_settings' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed.reels_data) && parsed.reels_data.length > 0) {
+            setReels(parsed.reels_data);
+          }
+        } catch {}
+      }
+    };
+
+    // Cross-tab real-time communication channel
+    let channel = null;
+    try {
+      channel = new BroadcastChannel('confelion_media_sync');
+      channel.onmessage = (msg) => {
+        if (msg.data?.reels && Array.isArray(msg.data.reels)) {
+          setReels(msg.data.reels);
+        } else if (msg.data?.settings?.reels_data && Array.isArray(msg.data.settings.reels_data)) {
+          setReels(msg.data.settings.reels_data);
+        }
+      };
+    } catch {}
+
     window.addEventListener('reels-updated', handleReelsUpdate);
-    return () => window.removeEventListener('reels-updated', handleReelsUpdate);
+    window.addEventListener('settings-updated', handleSettingsUpdate);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      channel?.close();
+      window.removeEventListener('reels-updated', handleReelsUpdate);
+      window.removeEventListener('settings-updated', handleSettingsUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, [propReels]);
 
   // Resolve any IndexedDB device video keys to Blob URLs
@@ -115,8 +179,9 @@ export default function LookbookReels({
                     <span>YouTube</span>
                   </div>
                 </div>
-              ) : (
+              ) : effectiveSrc ? (
                 <video
+                  key={effectiveSrc}
                   src={effectiveSrc}
                   poster={reel.posterUrl}
                   autoPlay
@@ -125,11 +190,22 @@ export default function LookbookReels({
                   playsInline
                   className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
+              ) : reel.posterUrl ? (
+                <img
+                  src={reel.posterUrl}
+                  alt={reel.title}
+                  className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 border border-white/5 p-4 text-center">
+                  <Play className="w-8 h-8 text-white/30 mb-2" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">{reel.title}</span>
+                </div>
               )}
 
-              {/* Devanagari Monogram Watermark 'वै' in top right */}
-              <div className="absolute top-2.5 right-2.5 text-lg font-serif font-bold text-white/80 drop-shadow-md select-none pointer-events-none">
-                वै
+              {/* Confelion Monogram Watermark in top right */}
+              <div className="absolute top-2.5 right-2.5 text-xs font-serif font-black tracking-widest text-white/70 drop-shadow-md select-none pointer-events-none px-1.5 py-0.5 border border-white/20 bg-black/40 backdrop-blur-xs rounded-xs">
+                C
               </div>
 
               {/* Custom Badge */}
@@ -190,6 +266,7 @@ export default function LookbookReels({
 
               return (
                 <video
+                  key={effectiveSrc}
                   src={effectiveSrc}
                   autoPlay
                   controls

@@ -85,11 +85,26 @@ const distDir = fs.existsSync(path.join(__dirname, 'confelion-frontend', 'dist')
     : path.join(__dirname, 'build')
 
 if (process.env.NODE_ENV === 'production' || fs.existsSync(distDir)) {
-  app.use(cacheControl(31536000), express.static(distDir))
+  const assetsDir = path.join(distDir, 'assets')
+  if (fs.existsSync(assetsDir)) {
+    app.use('/assets', cacheControl(31536000), express.static(assetsDir))
+  }
+  app.use(express.static(distDir, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+      } else {
+        res.setHeader('Cache-Control', 'public, max-age=86400')
+      }
+    }
+  }))
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next()
     const indexPath = path.join(distDir, 'index.html')
-    if (fs.existsSync(indexPath)) return res.sendFile(indexPath)
+    if (fs.existsSync(indexPath)) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+      return res.sendFile(indexPath)
+    }
     next()
   })
 }

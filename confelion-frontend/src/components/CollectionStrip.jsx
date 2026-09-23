@@ -1,137 +1,84 @@
-import {useEffect, useState, useRef} from "react"
-import {Link} from "react-router-dom"
-import {fetchAPI} from "../lib/api"
+import { Link, useSearchParams } from 'react-router-dom';
 
-function buildFilterUrl(filter) {
-  const params = new URLSearchParams()
-  if (filter.type) params.set("type", filter.type)
-  if (filter.tags) params.set("tags", filter.tags)
-  if (filter.category) params.set("category", filter.category)
-  const qs = params.toString()
-  return `/products${qs ? `?${qs}` : ""}`
-}
+export const STORE_COLLECTIONS = [
+  { id: 'unique-tees', label: 'UNIQUE TEES', type: 'tee', q: '' },
+  { id: 'waffle-knit', label: 'WAFFLE KNIT', type: 'tee', q: 'waffle' },
+  { id: 'wide-baggy', label: 'WIDE BAGGY', type: 'jeans', q: 'wide' },
+  { id: 'baggy-jeans', label: 'BAGGY JEANS', type: 'jeans', q: '' },
+  { id: 'confelion-shirt', label: 'CONFELION SHIRT', type: 'shirt', q: '' },
+  { id: 'formal-edge', label: 'FORMAL EDGE', type: 'shirt', q: 'formal' },
+  { id: 'selects-by-confelion', label: 'SELECTS BY CONFELION', type: 'all', featured: 'true', isFeatured: true }
+];
 
-export default function CollectionStrip() {
-  const [collections, setCollections] = useState([])
-  const [loading, setLoading] = useState(true)
-  const fetchedRef = useRef(false)
-
-  useEffect(() => {
-    if (fetchedRef.current) return
-    fetchedRef.current = true
-    const fetchCollections = async () => {
-      try {
-        const products = await fetchAPI('/api/products')
-
-        const typeCount = {}
-        const catCount = {}
-        const tagCount = {}
-        products.forEach(p => {
-          if (p.type) typeCount[p.type] = (typeCount[p.type] || 0) + 1
-          if (p.vendor) catCount[p.vendor] = (catCount[p.vendor] || 0) + 1
-          if (p.tags) {
-            p.tags.split(",").forEach(t => {
-              const tag = t.trim()
-              if (tag) tagCount[tag] = (tagCount[tag] || 0) + 1
-            })
-          }
-        })
-
-        const dynamicCollections = []
-
-        Object.entries(typeCount)
-          .sort((a, b) => b[1] - a[1])
-          .forEach(([type]) => {
-            dynamicCollections.push({
-              text: type.toUpperCase(),
-              filter: {type},
-              accent: dynamicCollections.length === 0,
-            })
-          })
-
-        Object.entries(catCount)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 3)
-          .forEach(([cat]) => {
-            dynamicCollections.push({
-              text: cat.toUpperCase(),
-              filter: {category: cat},
-              accent: false,
-            })
-          })
-
-        const popularTags = ["tee", "shirt", "jeans", "baggy", "formal", "waffle", "knit", "cotton", "linen", "oversized"]
-        Object.entries(tagCount)
-          .filter(([tag]) => popularTags.includes(tag.toLowerCase()))
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 4)
-          .forEach(([tag]) => {
-            dynamicCollections.push({
-              text: tag.toUpperCase(),
-              filter: {tags: tag},
-              accent: false,
-            })
-          })
-
-        if (dynamicCollections.length === 0) {
-          dynamicCollections.push(
-            {text: "TEES", filter: {type: "tee"}, accent: true},
-            {text: "SHIRTS", filter: {type: "shirt"}, accent: false},
-            {text: "JEANS", filter: {tags: "jeans"}, accent: false},
-            {text: "BAGGY", filter: {tags: "baggy"}, accent: false},
-            {text: "FORMAL", filter: {tags: "formal"}, accent: false}
-          )
-        }
-
-        setCollections(dynamicCollections.slice(0, 8))
-      } catch (e) {
-        console.error("Failed to fetch collections", e)
-        setCollections([
-          {text: "TEES", filter: {type: "tee"}, accent: true},
-          {text: "SHIRTS", filter: {type: "shirt"}, accent: false},
-          {text: "JEANS", filter: {tags: "jeans"}, accent: false},
-          {text: "BAGGY", filter: {tags: "baggy"}, accent: false},
-          {text: "FORMAL", filter: {tags: "formal"}, accent: false}
-        ])
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchCollections()
-  }, [])
-
-  if (loading) {
-    return (
-      <section className="cf-wrapper" aria-labelledby="collection-heading">
-        <div id="collection-heading" className="cf-heading">COLLECTION</div>
-        <div className="cf-strip">
-          <div className="cf-strip__track" role="list">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="cf-strip__item skeleton" style={{width: "120px"}} />
-            ))}
-          </div>
-        </div>
-      </section>
-    )
-  }
+export default function CollectionStrip({ activeId, onSelect, className = '' }) {
+  const [searchParams] = useSearchParams();
+  const currentType = searchParams.get('type');
+  const currentQ = searchParams.get('q');
+  const currentFeatured = searchParams.get('featured');
 
   return (
-    <section className="cf-wrapper" aria-labelledby="collection-heading">
-      <div id="collection-heading" className="cf-heading">COLLECTION</div>
-      <div className="cf-strip">
-        <div className="cf-strip__track" id="cfTrack" role="list">
-          {collections.map((item, index) => (
+    <section className={`w-full py-6 sm:py-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 ${className}`}>
+      {/* Centered Collection Heading matching reference screenshot */}
+      <div className="text-center mb-5 sm:mb-7">
+        <h2 className="text-2xl sm:text-3xl font-serif uppercase tracking-[0.25em] text-white">
+          COLLECTION
+        </h2>
+      </div>
+
+      {/* Horizontal Pills Strip */}
+      <div className="flex items-center justify-start md:justify-center gap-2 sm:gap-3 overflow-x-auto pb-3 scrollbar-none no-scrollbar px-1">
+        {STORE_COLLECTIONS.map((col) => {
+          const isSelected = activeId 
+            ? activeId === col.id 
+            : (col.isFeatured && currentFeatured === 'true') ||
+              (!col.isFeatured && currentType === col.type && (!col.q || currentQ === col.q));
+
+          const queryParts = [];
+          if (col.type && col.type !== 'all') queryParts.push(`type=${col.type}`);
+          if (col.q) queryParts.push(`q=${encodeURIComponent(col.q)}`);
+          if (col.featured) queryParts.push(`featured=true`);
+          const targetUrl = `/products${queryParts.length ? `?${queryParts.join('&')}` : ''}`;
+
+          if (onSelect) {
+            return (
+              <button
+                key={col.id}
+                type="button"
+                onClick={() => onSelect(col)}
+                className={`whitespace-nowrap transition-all duration-200 rounded-full cursor-pointer shrink-0 ${
+                  col.isFeatured
+                    ? isSelected
+                      ? 'px-6 py-2.5 text-xs sm:text-base font-black uppercase tracking-[0.16em] bg-white text-black border-2 border-white shadow-xl scale-[1.05]'
+                      : 'px-6 py-2.5 text-xs sm:text-base font-black uppercase tracking-[0.16em] bg-zinc-950 text-white border-2 border-white/70 hover:border-white shadow-lg hover:scale-[1.03]'
+                    : isSelected
+                    ? 'px-3.5 py-1.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider bg-white text-black border border-white shadow-sm'
+                    : 'px-3.5 py-1.5 text-[10px] sm:text-xs font-medium uppercase tracking-wider bg-black text-zinc-300 border border-white/30 hover:border-white/80 hover:text-white'
+                }`}
+              >
+                {col.label}
+              </button>
+            );
+          }
+
+          return (
             <Link
-              key={index}
-              to={buildFilterUrl(item.filter)}
-              className={`cf-strip__item ${item.accent ? "cf-strip__item--accent" : ""}`}
-              role="listitem"
+              key={col.id}
+              to={targetUrl}
+              className={`whitespace-nowrap transition-all duration-200 rounded-full inline-block shrink-0 ${
+                col.isFeatured
+                  ? isSelected
+                    ? 'px-6 py-2.5 text-xs sm:text-base font-black uppercase tracking-[0.16em] bg-white text-black border-2 border-white shadow-xl scale-[1.05]'
+                    : 'px-6 py-2.5 text-xs sm:text-base font-black uppercase tracking-[0.16em] bg-zinc-950 text-white border-2 border-white/70 hover:border-white shadow-lg hover:scale-[1.03]'
+                  : isSelected
+                  ? 'px-3.5 py-1.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider bg-white text-black border border-white shadow-sm'
+                  : 'px-3.5 py-1.5 text-[10px] sm:text-xs font-medium uppercase tracking-wider bg-black text-zinc-300 border border-white/30 hover:border-white/80 hover:text-white'
+              }`}
             >
-              {item.text}
+              {col.label}
             </Link>
-          ))}
-        </div>
+          );
+        })}
       </div>
     </section>
-  )
+  );
 }

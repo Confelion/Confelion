@@ -57,7 +57,7 @@ import {
   fetchDelhiveryOrders,
   dispatchDelhiveryOrder
 } from '../lib/api';
-import { STORE_SETTINGS } from '../data/mockData';
+import { STORE_SETTINGS, DEFAULT_TOPS_SIZE_CHART, DEFAULT_BOTTOMS_SIZE_CHART, REELS_DATA } from '../data/mockData';
 import { uploadMediaAsset } from '../lib/mediaStorage';
 import { 
   fetchFirestoreOrders, 
@@ -203,6 +203,17 @@ export default function Admin() {
   const sizeChartFileInputRef = useRef(null);
   const heroPcFileInputRef = useRef(null);
   const heroMobileFileInputRef = useRef(null);
+  const productVideoFileInputRef = useRef(null);
+  const reelVideoFileInputRefs = useRef([]);
+  const [isUploadingProductVideo, setIsUploadingProductVideo] = useState(false);
+  const [uploadingReelIdx, setUploadingReelIdx] = useState(null);
+  const [reels, setReels] = useState(() => {
+    try {
+      const stored = localStorage.getItem('confelion_reels');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return REELS_DATA;
+  });
 
   // Product form state
   const initialProductForm = {
@@ -214,18 +225,15 @@ export default function Admin() {
     type: 'shirt',
     inventory: 15,
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/DSC03664.jpg?v=1764095448&width=1200',
-    images: ['https://www.kaalvaish.in/cdn/shop/files/DSC03664.jpg?v=1764095448&width=1200'],
+    image_url: '',
+    images: [],
+    video_url: '',
     description: 'Exclusive all-black release crafted from heavyweight combed cotton with relaxed drop-shoulder silhouette.',
     details: ['100% Heavyweight Cotton', 'Relaxed Boxy Streetwear Drape', 'Reverse wash only in cold water'],
+    size_chart_title: '',
+    size_chart_type: 'tops',
     size_chart_image: '',
-    size_chart_table: [
-      { size: 'S', chest: '40"', length: '28"', shoulder: '18.5"', sleeve: '8.5"' },
-      { size: 'M', chest: '42"', length: '29"', shoulder: '19.5"', sleeve: '9.0"' },
-      { size: 'L', chest: '44"', length: '30"', shoulder: '20.5"', sleeve: '9.5"' },
-      { size: 'XL', chest: '46"', length: '31"', shoulder: '21.5"', sleeve: '10.0"' },
-      { size: 'XXL', chest: '48"', length: '32"', shoulder: '22.5"', sleeve: '10.5"' }
-    ]
+    size_chart_table: DEFAULT_TOPS_SIZE_CHART
   };
 
   const [productForm, setProductForm] = useState(initialProductForm);
@@ -252,6 +260,9 @@ export default function Admin() {
       setCustomers(Array.isArray(custsData) ? custsData : []);
       setRevenue(revData);
       setSettings(prev => ({ ...STORE_SETTINGS, ...prev, ...(settingsData || {}) }));
+      if (settingsData?.reels_data && Array.isArray(settingsData.reels_data) && settingsData.reels_data.length > 0) {
+        setReels(settingsData.reels_data);
+      }
       setLoading(false);
 
       // Merge Cloud Firestore orders non-blockingly in the background
@@ -509,6 +520,12 @@ export default function Admin() {
       ? prod.images
       : (prod.image_url ? [prod.image_url] : []);
 
+    const isPants = prod.size_chart_type === 'bottoms' ||
+      ['jeans', 'pant', 'pants', 'bottom', 'bottoms'].includes((prod.type || '').toLowerCase()) ||
+      (prod.category || '').toLowerCase().includes('jean') ||
+      (prod.category || '').toLowerCase().includes('pant') ||
+      (prod.category || '').toLowerCase().includes('baggy');
+
     setProductForm({
       title: prod.title || '',
       handle: prod.handle || '',
@@ -517,14 +534,17 @@ export default function Admin() {
       category: prod.category || 'Shirts',
       type: prod.type || 'shirt',
       inventory: prod.inventory !== undefined ? prod.inventory : 15,
-      sizes: prod.sizes || ['S', 'M', 'L', 'XL', 'XXL'],
+      sizes: prod.sizes || (isPants ? ['28', '30', '32', '34', '36'] : ['S', 'M', 'L', 'XL', 'XXL']),
       image_url: prod.image_url || existingImages[0] || '',
       secondary_image: prod.secondary_image || existingImages[1] || existingImages[0] || '',
       images: existingImages,
+      video_url: prod.video_url || '',
       description: prod.description || '',
       details: prod.details || ['100% Combed Cotton'],
+      size_chart_title: prod.size_chart_title || '',
+      size_chart_type: prod.size_chart_type || (isPants ? 'bottoms' : 'tops'),
       size_chart_image: prod.size_chart_image || '',
-      size_chart_table: prod.size_chart_table || initialProductForm.size_chart_table
+      size_chart_table: prod.size_chart_table || (isPants ? DEFAULT_BOTTOMS_SIZE_CHART : DEFAULT_TOPS_SIZE_CHART)
     });
     setCustomImageUrlInput('');
     setSizeChartMode(prod.size_chart_image ? 'image' : 'table');
@@ -654,6 +674,78 @@ export default function Admin() {
     }
   };
 
+  const handleProductVideoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsUploadingProductVideo(true);
+      showToast('Uploading video reel to Cloudflare...');
+      const uploaded = await uploadMediaAsset(file, 'reels');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid URL');
+      }
+      setProductForm((prev) => ({
+        ...prev,
+        video_url: uploaded.url
+      }));
+      showToast('Video reel uploaded to Cloudflare & attached!');
+    } catch (err) {
+      console.error('Product video upload error:', err);
+      alert('Video upload failed: ' + (err.message || 'Please check your connection'));
+    } finally {
+      setIsUploadingProductVideo(false);
+      if (productVideoFileInputRef.current) productVideoFileInputRef.current.value = '';
+    }
+  };
+
+  const handleAdminReelVideoUpload = async (e, idx) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setUploadingReelIdx(idx);
+      showToast(`Uploading Reel #${idx + 1} to Cloudflare...`);
+      const uploaded = await uploadMediaAsset(file, 'reels');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid URL');
+      }
+      const updated = [...reels];
+      updated[idx] = {
+        ...updated[idx],
+        videoUrl: uploaded.url,
+        sourceType: 'cloud'
+      };
+      setReels(updated);
+      const updatedSettings = { ...settings, reels_data: updated };
+      setSettings(updatedSettings);
+      try {
+        localStorage.setItem('confelion_reels', JSON.stringify(updated));
+        localStorage.setItem('confelion_settings', JSON.stringify(updatedSettings));
+        window.dispatchEvent(new CustomEvent('reels-updated', { detail: updated }));
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: updatedSettings }));
+        const channel = new BroadcastChannel('confelion_media_sync');
+        channel.postMessage({ reels: updated, settings: updatedSettings });
+        channel.close();
+      } catch (e) {}
+
+      // Sync to backend SQLite and Cloud Firestore
+      fetchAPI('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings: updatedSettings })
+      }).catch(() => {});
+      syncSettingsToFirestore(updatedSettings).catch(() => {});
+
+      showToast(`Reel #${idx + 1} uploaded to Cloudflare & rendered live!`);
+    } catch (err) {
+      console.error('Reel upload error:', err);
+      alert('Reel upload failed: ' + (err.message || 'Please check your connection'));
+    } finally {
+      setUploadingReelIdx(null);
+      if (reelVideoFileInputRefs.current[idx]) {
+        reelVideoFileInputRefs.current[idx].value = '';
+      }
+    }
+  };
+
   const handleHeroDeviceUpload = async (e, type = 'pc') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -714,7 +806,7 @@ export default function Admin() {
 
       const imagesList = (productForm.images && productForm.images.length > 0)
         ? productForm.images
-        : (productForm.image_url ? [productForm.image_url] : ['https://www.kaalvaish.in/cdn/shop/files/DSC03664.jpg?v=1764095448&width=1200']);
+        : (productForm.image_url ? [productForm.image_url] : []);
 
       const primaryImage = imagesList[0];
       const secondaryImage = imagesList[1] || primaryImage;
@@ -900,17 +992,30 @@ export default function Admin() {
   const handleSaveSettings = async (e) => {
     if (e) e.preventDefault();
     try {
+      const mergedSettings = { ...settings, reels_data: reels };
       try {
-        localStorage.setItem('confelion_settings', JSON.stringify(settings));
-        window.dispatchEvent(new CustomEvent('settings-updated', { detail: settings }));
+        localStorage.setItem('confelion_settings', JSON.stringify(mergedSettings));
+        localStorage.setItem('confelion_reels', JSON.stringify(reels));
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: mergedSettings }));
+        window.dispatchEvent(new CustomEvent('reels-updated', { detail: reels }));
       } catch (err) {}
 
       await fetchAPI('/api/admin/settings', {
         method: 'POST',
-        body: JSON.stringify({ settings })
+        body: JSON.stringify({ settings: mergedSettings })
       });
 
-      await syncSettingsToFirestore(settings).catch(() => {});
+      const token = localStorage.getItem('token') || '';
+      await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ settings: mergedSettings })
+      }).catch(() => {});
+
+      await syncSettingsToFirestore(mergedSettings).catch(() => {});
 
       showToast('Storefront & payment settings published live across all devices');
     } catch (err) {
@@ -2109,6 +2214,115 @@ export default function Admin() {
                   </button>
                 </div>
               </div>
+
+              {/* Motion Lookbook Reels Card with Device Upload to Cloudflare */}
+              <div className="bg-white border border-[#e1e3e5] rounded-xl p-6 shadow-xs space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-[#e1e3e5]">
+                  <div>
+                    <h3 className="text-sm font-bold text-[#202223] flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-zinc-700" />
+                      <span>Shop the Drop — Lookbook Video Reels</span>
+                    </h3>
+                    <p className="text-xs text-[#6d7175] mt-0.5">
+                      Curated motion lookbooks on the homepage. Upload high-res videos from your phone/computer directly to Cloudflare R2.
+                    </p>
+                  </div>
+                  <Link
+                    to="/admin/editor"
+                    className="text-xs text-blue-600 hover:underline font-semibold flex items-center gap-1"
+                  >
+                    <span>Visual Editor</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {reels.map((reel, idx) => (
+                    <div key={reel.id || idx} className="border border-[#e1e3e5] rounded-xl p-4 bg-[#fafbfb] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs text-[#202223]">Reel #{idx + 1}: {reel.title}</span>
+                        <span className="px-2 py-0.5 bg-zinc-200 text-zinc-800 text-[10px] font-bold rounded">
+                          {reel.badge || 'MOTION'}
+                        </span>
+                      </div>
+
+                      {/* Video Player Preview if exists */}
+                      {reel.videoUrl && (
+                        <div className="relative aspect-[9/16] max-h-56 w-full bg-black rounded-lg overflow-hidden mx-auto flex items-center justify-center border border-zinc-300">
+                          <video
+                            src={reel.videoUrl}
+                            controls
+                            muted
+                            playsInline
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      )}
+
+                      {/* Video URL or Device Upload */}
+                      <div>
+                        <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
+                          Video File (Cloudflare R2)
+                        </label>
+                        <div className="flex gap-1.5">
+                          <input
+                            type="text"
+                            value={reel.videoUrl || ''}
+                            onChange={(e) => {
+                              const updated = [...reels];
+                              updated[idx] = { ...updated[idx], videoUrl: e.target.value };
+                              setReels(updated);
+                              const updatedSettings = { ...settings, reels_data: updated };
+                              setSettings(updatedSettings);
+                              try {
+                                localStorage.setItem('confelion_reels', JSON.stringify(updated));
+                                localStorage.setItem('confelion_settings', JSON.stringify(updatedSettings));
+                                window.dispatchEvent(new CustomEvent('reels-updated', { detail: updated }));
+                                window.dispatchEvent(new CustomEvent('settings-updated', { detail: updatedSettings }));
+                                const channel = new BroadcastChannel('confelion_media_sync');
+                                channel.postMessage({ reels: updated, settings: updatedSettings });
+                                channel.close();
+                              } catch (err) {}
+                              fetchAPI('/api/admin/settings', {
+                                method: 'POST',
+                                body: JSON.stringify({ settings: updatedSettings })
+                              }).catch(() => {});
+                              syncSettingsToFirestore(updatedSettings).catch(() => {});
+                            }}
+                            placeholder="Cloudflare / MP4 URL"
+                            className="flex-1 px-2.5 py-1.5 border border-[#d2d5d8] rounded-lg text-xs text-[#202223] font-mono focus:outline-none focus:border-black"
+                          />
+                          <button
+                            type="button"
+                            disabled={uploadingReelIdx === idx}
+                            onClick={() => reelVideoFileInputRefs.current[idx]?.click()}
+                            className="px-3 py-1.5 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shadow-xs disabled:opacity-50"
+                          >
+                            {uploadingReelIdx === idx ? (
+                              <>
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                <span>Uploading...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="w-3.5 h-3.5" />
+                                <span>From Device</span>
+                              </>
+                            )}
+                          </button>
+                          <input
+                            ref={el => reelVideoFileInputRefs.current[idx] = el}
+                            type="file"
+                            accept="video/*"
+                            className="hidden"
+                            onChange={(e) => handleAdminReelVideoUpload(e, idx)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -3190,35 +3404,152 @@ export default function Admin() {
                     </div>
                   </div>
                 )}
+                {/* Video Reel Field */}
+                <div className="pt-2 border-t border-[#e1e3e5]">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block font-bold text-xs text-[#202223]">Product Video Reel (.mp4 / stream)</label>
+                    <span className="text-[10px] text-zinc-500 font-mono">Cloudflare R2 CDN</span>
+                  </div>
+                  <p className="text-[11px] text-[#6d7175] mb-2">
+                    Upload a video from device or paste a URL. Plays directly in the mobile & desktop product gallery.
+                  </p>
+                  
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      placeholder="Paste video URL (https://.../video.mp4) or choose from device..."
+                      value={productForm.video_url || ''}
+                      onChange={(e) => setProductForm({ ...productForm, video_url: e.target.value })}
+                      className="flex-1 px-3 py-2 border border-[#d2d5d8] rounded-lg text-xs text-[#202223] focus:outline-none focus:border-black font-mono placeholder:text-zinc-400"
+                    />
+                    <button
+                      type="button"
+                      disabled={isUploadingProductVideo}
+                      onClick={() => productVideoFileInputRef.current?.click()}
+                      className="px-3.5 py-2 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap shadow-xs disabled:opacity-50"
+                    >
+                      {isUploadingProductVideo ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Uploading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>From Device</span>
+                        </>
+                      )}
+                    </button>
+                    <input
+                      ref={productVideoFileInputRef}
+                      type="file"
+                      accept="video/*"
+                      className="hidden"
+                      onChange={handleProductVideoUpload}
+                    />
+                  </div>
+
+                  {productForm.video_url && (
+                    <div className="mt-2.5 p-2.5 bg-zinc-950 border border-zinc-800 rounded-lg max-w-sm">
+                      <div className="flex items-center justify-between text-[10px] text-zinc-400 mb-1.5 font-mono">
+                        <span className="truncate max-w-[200px]">{productForm.video_url}</span>
+                        <button
+                          type="button"
+                          onClick={() => setProductForm(prev => ({ ...prev, video_url: '' }))}
+                          className="text-red-400 hover:text-red-300 ml-2"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <video 
+                        src={productForm.video_url} 
+                        controls 
+                        muted 
+                        playsInline 
+                        className="w-full max-h-48 object-contain rounded bg-black" 
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* SIZE CHART CONFIGURATION */}
               <div className="p-3.5 bg-zinc-50 border border-[#e1e3e5] rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Ruler className="w-4 h-4 text-zinc-700" />
                     <span className="font-bold text-xs text-[#202223]">Size Chart & Specifications</span>
                   </div>
-                  <div className="flex bg-zinc-200/80 p-0.5 rounded-lg text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setSizeChartMode('table')}
-                      className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                        sizeChartMode === 'table' ? 'bg-white text-black shadow-xs' : 'text-zinc-600 hover:text-black'
-                      }`}
-                    >
-                      Measurement Table
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSizeChartMode('image')}
-                      className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
-                        sizeChartMode === 'image' ? 'bg-white text-black shadow-xs' : 'text-zinc-600 hover:text-black'
-                      }`}
-                    >
-                      Chart Image / Graphic
-                    </button>
+
+                  <div className="flex items-center gap-2">
+                    {/* Tops vs Bottoms Template Selector */}
+                    <div className="flex bg-zinc-200/90 p-0.5 rounded-lg text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProductForm({
+                            ...productForm,
+                            size_chart_type: 'tops',
+                            size_chart_table: DEFAULT_TOPS_SIZE_CHART
+                          });
+                        }}
+                        className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                          productForm.size_chart_type !== 'bottoms' ? 'bg-white text-black shadow-xs' : 'text-zinc-600 hover:text-black'
+                        }`}
+                      >
+                        Tops / Shirts
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProductForm({
+                            ...productForm,
+                            size_chart_type: 'bottoms',
+                            size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART
+                          });
+                        }}
+                        className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                          productForm.size_chart_type === 'bottoms' ? 'bg-white text-black shadow-xs' : 'text-zinc-600 hover:text-black'
+                        }`}
+                      >
+                        Bottoms / Pants
+                      </button>
+                    </div>
+
+                    {/* Table vs Image Mode */}
+                    <div className="flex bg-zinc-200/80 p-0.5 rounded-lg text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setSizeChartMode('table')}
+                        className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                          sizeChartMode === 'table' ? 'bg-white text-black shadow-xs' : 'text-zinc-600 hover:text-black'
+                        }`}
+                      >
+                        Table
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSizeChartMode('image')}
+                        className={`px-2.5 py-1 rounded-md font-semibold transition-all ${
+                          sizeChartMode === 'image' ? 'bg-white text-black shadow-xs' : 'text-zinc-600 hover:text-black'
+                        }`}
+                      >
+                        Image
+                      </button>
+                    </div>
                   </div>
+                </div>
+
+                {/* Customizable Size Chart Heading */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-zinc-600 mb-1">Size Chart Heading / Title</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Gentle Chaos Baggy Jeans Measurements (defaults to Product Name)"
+                    value={productForm.size_chart_title || ''}
+                    onChange={(e) => setProductForm({ ...productForm, size_chart_title: e.target.value })}
+                    className="w-full px-3 py-1.5 border border-[#d2d5d8] rounded-lg text-xs text-[#202223] focus:outline-none focus:border-black"
+                  />
                 </div>
 
                 {sizeChartMode === 'image' ? (
@@ -3268,66 +3599,144 @@ export default function Admin() {
                   <div className="overflow-x-auto">
                     <table className="w-full text-[11px] border border-[#e1e3e5] rounded-lg bg-white">
                       <thead className="bg-zinc-100 text-zinc-700">
-                        <tr>
-                          <th className="py-1.5 px-2 text-left">Size</th>
-                          <th className="py-1.5 px-2 text-left">Chest</th>
-                          <th className="py-1.5 px-2 text-left">Length</th>
-                          <th className="py-1.5 px-2 text-left">Shoulder</th>
-                          <th className="py-1.5 px-2 text-left">Sleeve</th>
-                        </tr>
+                        {productForm.size_chart_type === 'bottoms' ? (
+                          <tr>
+                            <th className="py-1.5 px-2 text-left">Size</th>
+                            <th className="py-1.5 px-2 text-left">Waist</th>
+                            <th className="py-1.5 px-2 text-left">Total Length</th>
+                            <th className="py-1.5 px-2 text-left">Inseam</th>
+                            <th className="py-1.5 px-2 text-left">Hip/Thigh</th>
+                            <th className="py-1.5 px-2 text-left">Leg Opening</th>
+                          </tr>
+                        ) : (
+                          <tr>
+                            <th className="py-1.5 px-2 text-left">Size</th>
+                            <th className="py-1.5 px-2 text-left">Chest</th>
+                            <th className="py-1.5 px-2 text-left">Length</th>
+                            <th className="py-1.5 px-2 text-left">Shoulder</th>
+                            <th className="py-1.5 px-2 text-left">Sleeve</th>
+                          </tr>
+                        )}
                       </thead>
                       <tbody className="divide-y divide-[#e1e3e5]">
                         {(productForm.size_chart_table || []).map((row, idx) => (
                           <tr key={idx}>
                             <td className="py-1 px-2 font-bold font-mono text-zinc-900">{row.size}</td>
-                            <td className="py-1 px-2">
-                              <input
-                                type="text"
-                                value={row.chest}
-                                onChange={(e) => {
-                                  const nextTable = [...productForm.size_chart_table];
-                                  nextTable[idx] = { ...nextTable[idx], chest: e.target.value };
-                                  setProductForm({ ...productForm, size_chart_table: nextTable });
-                                }}
-                                className="w-16 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
-                              />
-                            </td>
-                            <td className="py-1 px-2">
-                              <input
-                                type="text"
-                                value={row.length}
-                                onChange={(e) => {
-                                  const nextTable = [...productForm.size_chart_table];
-                                  nextTable[idx] = { ...nextTable[idx], length: e.target.value };
-                                  setProductForm({ ...productForm, size_chart_table: nextTable });
-                                }}
-                                className="w-16 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
-                              />
-                            </td>
-                            <td className="py-1 px-2">
-                              <input
-                                type="text"
-                                value={row.shoulder}
-                                onChange={(e) => {
-                                  const nextTable = [...productForm.size_chart_table];
-                                  nextTable[idx] = { ...nextTable[idx], shoulder: e.target.value };
-                                  setProductForm({ ...productForm, size_chart_table: nextTable });
-                                }}
-                                className="w-16 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
-                              />
-                            </td>
-                            <td className="py-1 px-2">
-                              <input
-                                type="text"
-                                value={row.sleeve}
-                                onChange={(e) => {
-                                  const nextTable = [...productForm.size_chart_table];
-                                  nextTable[idx] = { ...nextTable[idx], sleeve: e.target.value };
-                                  setProductForm({ ...productForm, size_chart_table: nextTable });
-                                }}
-                                className="w-16 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
-                              />
-                            </td>
+                            {productForm.size_chart_type === 'bottoms' ? (
+                              <>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.waist || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], waist: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.length || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], length: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.inseam || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], inseam: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.hip || row.thigh || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], hip: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.legOpening || row.opening || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], legOpening: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                              </>
+                            ) : (
+                              <>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.chest || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], chest: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.length || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], length: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.shoulder || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], shoulder: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                                <td className="py-1 px-2">
+                                  <input
+                                    type="text"
+                                    value={row.sleeve || ''}
+                                    onChange={(e) => {
+                                      const nextTable = [...productForm.size_chart_table];
+                                      nextTable[idx] = { ...nextTable[idx], sleeve: e.target.value };
+                                      setProductForm({ ...productForm, size_chart_table: nextTable });
+                                    }}
+                                    className="w-14 px-1.5 py-0.5 border border-[#d2d5d8] rounded text-zinc-800 font-mono"
+                                  />
+                                </td>
+                              </>
+                            )}
                           </tr>
                         ))}
                       </tbody>

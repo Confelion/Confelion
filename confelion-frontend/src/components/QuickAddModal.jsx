@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, Check } from 'lucide-react';
 import { addItemToCart } from '../lib/cartManager';
+import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
 
 export default function QuickAddModal() {
   const [product, setProduct] = useState(null);
@@ -57,8 +58,13 @@ export default function QuickAddModal() {
         {/* Product Snapshot */}
         <div className="flex items-center gap-4 mb-5">
           <img
-            src={product.image_url}
+            src={optimizeImageUrl(product.image_url, { width: 160, height: 200, format: 'webp' })}
             alt={product.title}
+            loading="lazy"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = PLACEHOLDER_IMAGE;
+            }}
             className="w-16 h-20 object-cover bg-black border border-white/10"
           />
           <div>

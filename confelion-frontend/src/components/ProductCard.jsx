@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ShoppingBag } from 'lucide-react';
+import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, priority = false }) {
   const [isHovered, setIsHovered] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   const priceVal = typeof product.price === 'number' ? product.price : parseFloat(product.price || 0);
   const compareVal = product.compare_at_price ? (typeof product.compare_at_price === 'number' ? product.compare_at_price : parseFloat(product.compare_at_price)) : null;
@@ -14,6 +16,9 @@ export default function ProductCard({ product }) {
     window.dispatchEvent(new CustomEvent('open-quick-add', { detail: product }));
   };
 
+  const primarySrc = optimizeImageUrl(product.image_url, { width: 500, height: 650, format: 'webp' });
+  const secondarySrc = product.secondary_image ? optimizeImageUrl(product.secondary_image, { width: 500, height: 650, format: 'webp' }) : null;
+
   return (
     <div className="group relative flex flex-col bg-black select-none">
       {/* 3:4 Portrait Media Box */}
@@ -23,20 +28,39 @@ export default function ProductCard({ product }) {
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
       >
+        {/* Simple luxury preloading shimmer animation until loaded */}
+        {!imgLoaded && (
+          <div className="absolute inset-0 luxury-shimmer pointer-events-none z-10 flex items-center justify-center">
+            <span className="text-[10px] tracking-widest uppercase font-mono text-zinc-600/80 select-none">CONFELION</span>
+          </div>
+        )}
+
         <img
-          src={product.image_url}
+          src={primarySrc}
           alt={product.title}
-          loading="lazy"
-          className={`h-full w-full object-cover transition-opacity duration-500 ${
-            isHovered && product.secondary_image ? 'opacity-0' : 'opacity-100'
+          loading={priority ? 'eager' : 'lazy'}
+          decoding="async"
+          fetchPriority={priority ? 'high' : 'auto'}
+          onLoad={() => setImgLoaded(true)}
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = PLACEHOLDER_IMAGE;
+            setImgLoaded(true);
+          }}
+          className={`h-full w-full object-cover transition-opacity duration-300 ${
+            imgLoaded ? (isHovered && secondarySrc ? 'opacity-0' : 'opacity-100') : 'opacity-0'
           }`}
         />
-        {product.secondary_image && (
+        {secondarySrc && (
           <img
-            src={product.secondary_image}
+            src={secondarySrc}
             alt={`${product.title} back view`}
             loading="lazy"
-            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-500 ${
+            decoding="async"
+            onError={(e) => {
+              e.currentTarget.style.display = 'none';
+            }}
+            className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
               isHovered ? 'opacity-100' : 'opacity-0'
             }`}
           />

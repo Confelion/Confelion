@@ -1,3 +1,38 @@
+export const REELS_DATA = [
+  {
+    id: 'reel-1',
+    title: 'Timeless Drop',
+    productHandle: 'veltora-aurex-formal',
+    videoUrl: 'https://pub-2dfcf8b99fc24f2e936e2826ab666474.r2.dev/uploads/reels/1790182273913-8d60df9d4962-img_9752-mov.mp4',
+    posterUrl: '',
+    badge: 'NEW DROP'
+  },
+  {
+    id: 'reel-2',
+    title: 'Cutout Motion',
+    productHandle: 'phantom-cutout-tee',
+    videoUrl: 'https://pub-2dfcf8b99fc24f2e936e2826ab666474.r2.dev/uploads/reels/1790181886601-1ce9aaf6f27b-untitled-video-9-.mp4',
+    posterUrl: '',
+    badge: 'UNBOXING'
+  },
+  {
+    id: 'reel-3',
+    title: 'Henley Craft',
+    productHandle: 'bang-black-henley',
+    videoUrl: '',
+    posterUrl: '',
+    badge: 'EDITORIAL'
+  },
+  {
+    id: 'reel-4',
+    title: 'Wide Leg Drape',
+    productHandle: 'cool-wash-wide-leg',
+    videoUrl: '',
+    posterUrl: '',
+    badge: 'CLOSE UP'
+  }
+];
+
 export const STORE_SETTINGS = {
   site_name: 'CONFELION',
   tagline: "India's Own All BLACK Premium Fashion Label",
@@ -29,45 +64,13 @@ export const STORE_SETTINGS = {
   footer_contact_email: 'support@confelion.com',
   footer_contact_phone: '+91 63924 11276',
   footer_contact_hours: 'Mon - Sat: 10 AM to 7 PM IST',
-  footer_copyright: '© 2026 CONFELION. All rights reserved.'
+  footer_copyright: '© 2026 CONFELION. All rights reserved.',
+  reels_title: 'Shop the Drop',
+  reels_subtitle: 'Curated motion lookbook & editorial unboxing',
+  reels_data: REELS_DATA
 };
 
-export const REELS_DATA = [
-  {
-    id: 'reel-1',
-    title: 'Timeless Hampi',
-    productHandle: 'timeless-hampi-t-shirt',
-    videoUrl: 'https://cdn.shopify.com/videos/c/vp/ce6d49e383b64934b77bdbd5546b28c2/ce6d49e383b64934b77bdbd5546b28c2.HD-720p-4.5Mbps-85048623.mp4',
-    posterUrl: 'https://cdn.shopify.com/s/files/1/0616/0311/9240/files/preview_images/ce6d49e383b64934b77bdbd5546b28c2.thumbnail.0000000000.jpg?v=1779882217',
-    badge: 'NEW DROP'
-  },
-  {
-    id: 'reel-2',
-    title: 'Indie Art Unbox',
-    productHandle: 'indie-art-t-shirt',
-    videoUrl: 'https://cdn.shopify.com/videos/c/vp/ce6d49e383b64934b77bdbd5546b28c2/ce6d49e383b64934b77bdbd5546b28c2.HD-720p-4.5Mbps-85048623.mp4',
-    posterUrl: 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=800&auto=format&fit=crop',
-    badge: 'UNBOXING'
-  },
-  {
-    id: 'reel-3',
-    title: 'Only Fear God Shirt',
-    productHandle: 'only-fear-god-theme-shirt',
-    videoUrl: 'https://cdn.shopify.com/videos/c/vp/ce6d49e383b64934b77bdbd5546b28c2/ce6d49e383b64934b77bdbd5546b28c2.HD-720p-4.5Mbps-85048623.mp4',
-    posterUrl: 'https://images.unsplash.com/photo-1617137984095-74e4e5e3613f?q=80&w=800&auto=format&fit=crop',
-    badge: 'EDITORIAL'
-  },
-  {
-    id: 'reel-4',
-    title: 'Wild Soul Fabric',
-    productHandle: 'wild-soul-hoodie',
-    videoUrl: 'https://cdn.shopify.com/videos/c/vp/ce6d49e383b64934b77bdbd5546b28c2/ce6d49e383b64934b77bdbd5546b28c2.HD-720p-4.5Mbps-85048623.mp4',
-    posterUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=800&auto=format&fit=crop',
-    badge: 'CLOSE UP'
-  }
-];
-
-export const DEFAULT_SIZE_CHART = [
+export const DEFAULT_TOPS_SIZE_CHART = [
   { size: 'S', chest: '40"', length: '28"', shoulder: '18.5"', sleeve: '8.5"' },
   { size: 'M', chest: '42"', length: '29"', shoulder: '19.5"', sleeve: '9.0"' },
   { size: 'L', chest: '44"', length: '30"', shoulder: '20.5"', sleeve: '9.5"' },
@@ -75,33 +78,49 @@ export const DEFAULT_SIZE_CHART = [
   { size: 'XXL', chest: '48"', length: '32"', shoulder: '22.5"', sleeve: '10.5"' }
 ];
 
+export const DEFAULT_BOTTOMS_SIZE_CHART = [
+  { size: '28', waist: '29"', length: '40"', inseam: '30"', hip: '38"', legOpening: '20"' },
+  { size: '30', waist: '31"', length: '41"', inseam: '31"', hip: '40"', legOpening: '21"' },
+  { size: '32', waist: '33"', length: '42"', inseam: '32"', hip: '42"', legOpening: '22"' },
+  { size: '34', waist: '35"', length: '43"', inseam: '32"', hip: '44"', legOpening: '23"' },
+  { size: '36', waist: '37"', length: '44"', inseam: '33"', hip: '46"', legOpening: '24"' }
+];
+
+export const DEFAULT_SIZE_CHART = DEFAULT_TOPS_SIZE_CHART;
+
+export const COLLECTIONS_LIST = [
+  { id: 'unique-tees', label: 'UNIQUE TEES', filter: 'tee' },
+  { id: 'waffle-knit', label: 'WAFFLE KNIT', filter: 'waffle' },
+  { id: 'wide-baggy', label: 'WIDE BAGGY', filter: 'wide' },
+  { id: 'baggy-jeans', label: 'BAGGY JEANS', filter: 'jeans' },
+  { id: 'confelion-shirt', label: 'CONFELION SHIRT', filter: 'shirt' },
+  { id: 'formal-edge', label: 'FORMAL EDGE', filter: 'formal' },
+  { id: 'selects-by-confelion', label: 'SELECTS BY CONFELION', filter: 'selects', isFeatured: true }
+];
+
 export const PRODUCTS_DATA = [
   {
     id: 'prod-1',
-    handle: 'only-fear-god-theme-shirt',
-    title: 'Black Panther Shirt',
-    category: 'Shirts',
-    type: 'shirt',
-    price: 2599,
-    compare_at_price: 4997,
+    handle: 'veltora-aurex-formal',
+    title: 'VELTORA AUREX FORMAL',
+    category: 'Formal',
+    type: 'formal',
+    price: 1259,
+    compare_at_price: 2399,
     rating: 4.9,
     reviews_count: 38,
     is_recent_drop: true,
     is_bestseller: true,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/DSC03664.jpg?v=1764095448&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/DSC03663.jpg?v=1764095448&width=1200',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000fd8c720b930fa6798798c0ca.png?v=1779914586&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000fd8c720b930fa6798798c0ca.png?v=1779914586&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03664.jpg?v=1764095448&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03663.jpg?v=1764095448&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03666.jpg?v=1764095448&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/ChatGPT_Image_May_27_2026_02_24_02_PM.png?v=1780306111&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000fd8c720b930fa6798798c0ca.png?v=1779914586&width=600&format=webp'
     ],
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'The Only Fear God Shirt draws from a presence that doesn’t seek validation, it commands respect through silence. Inspired by the black panther, a symbol of stealth, power, and untamed elegance.',
+    description: 'Precision tailored formal luxury with sharp silhouette and impeccable stitch craft.',
     details: [
       '100% Premium Heavyweight Cotton',
-      'High-density screen printed rear panther artwork',
-      'Subtle tonal "Only Fear God" embroidery across back shoulder',
+      'Matte black stealth hardware',
       'Cuban style open collar with relaxed drop shoulders',
       'Reverse wash only with cold water'
     ],
@@ -111,28 +130,26 @@ export const PRODUCTS_DATA = [
   },
   {
     id: 'prod-2',
-    handle: 'indie-art-t-shirt',
-    title: 'Indie Art T-shirt',
+    handle: 'phantom-cutout-tee',
+    title: 'PHANTOM CUTOUT TEE',
     category: 'T-Shirts',
     type: 'tee',
-    price: 2499,
-    compare_at_price: 3999,
+    price: 969,
+    compare_at_price: 1799,
     rating: 4.8,
     reviews_count: 24,
     is_recent_drop: true,
     is_bestseller: false,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/DSC03663.jpg?v=1764095448&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/DSC03664.jpg?v=1764095448&width=1200',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260516_145138_jpg.jpg?v=1778923380&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260516_145138_jpg.jpg?v=1778923380&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03663.jpg?v=1764095448&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03664.jpg?v=1764095448&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03666.jpg?v=1764095448&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260516_145138_jpg.jpg?v=1778923380&width=600&format=webp'
     ],
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'Custom indie patches stitched across premium 240 GSM organic cotton with an oversized boxy silhouette.',
+    description: 'Minimalist cutout graphic silhouette stitched across premium 240 GSM organic cotton with an oversized boxy drape.',
     details: [
       '240 GSM 100% Combed Cotton',
-      'Artisanal multi-patch distressed print design',
+      'Artisanal cutout design',
       'Ribbed thick crew neck collar',
       'Bio-washed for deep ultra-black shade preservation'
     ],
@@ -142,65 +159,54 @@ export const PRODUCTS_DATA = [
   },
   {
     id: 'prod-3',
-    handle: 'gentle-chaos-baggy-jeans',
-    title: 'Gentle Chaos Baggy Jeans',
-    category: 'Jeans',
-    type: 'jeans',
-    price: 2999,
-    compare_at_price: 5447,
+    handle: 'bang-white-henley',
+    title: 'BANG WHITE HENLEY',
+    category: 'T-Shirts',
+    type: 'tee',
+    price: 969,
+    compare_at_price: 1499,
     rating: 5.0,
     reviews_count: 42,
-    is_recent_drop: false,
+    is_recent_drop: true,
     is_bestseller: true,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/CopyofP_d05ff421-d691-4d24-aa10-686192169a87.jpg?v=1775827536&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/CopyofF_ab69a595-45ec-48d5-8fcc-fabe7246c1a7.jpg?v=1776160121&width=1200',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/WhatsApp_Image_2026-04-27_at_3.30.25_PM.jpg?v=1777284279&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/WhatsApp_Image_2026-04-27_at_3.30.25_PM.jpg?v=1777284279&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofP_d05ff421-d691-4d24-aa10-686192169a87.jpg?v=1775827536&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofF_ab69a595-45ec-48d5-8fcc-fabe7246c1a7.jpg?v=1776160121&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofA_bfc8084f-ac9f-4867-996e-29d74079c52c.jpg?v=1776160121&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/WhatsApp_Image_2026-04-27_at_3.30.25_PM.jpg?v=1777284279&width=600&format=webp'
     ],
-    sizes: ['28', '30', '32', '34', '36'],
-    description: 'Ultra wide-leg streetwear denim featuring high-contrast sunflower spray artwork at the lower flared cuff.',
+    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
+    description: 'Waffle textured Henley engineered for everyday luxury with structured placket and pearlized buttons.',
     details: [
-      '13.5 oz Raw Washed Heavy Black Denim',
-      'High-density screen print botanical artwork on leg',
-      'Reinforced silver rivet hardware with YKK custom zipper',
-      'Tailored wide stacked pooling fit'
+      'Waffle Knit Premium Cotton',
+      'Reinforced button placket',
+      'Tailored relaxed fit'
     ],
     size_chart_image: '',
-    size_chart_table: [
-      { size: '28', waist: '29"', inseam: '32"', legOpening: '21"' },
-      { size: '30', waist: '31"', inseam: '32"', legOpening: '22"' },
-      { size: '32', waist: '33"', inseam: '33"', legOpening: '23"' },
-      { size: '34', waist: '35"', inseam: '33"', legOpening: '24"' },
-      { size: '36', waist: '37"', inseam: '34"', legOpening: '25"' }
-    ],
+    size_chart_table: DEFAULT_SIZE_CHART,
     inventory: 18
   },
   {
     id: 'prod-4',
-    handle: 'kaalvaish-stripe-shirt',
-    title: 'Kaalvaish Stripe Shirt',
-    category: 'Shirts',
-    type: 'shirt',
-    price: 1999,
-    compare_at_price: 3447,
+    handle: 'bang-black-henley',
+    title: 'BANG BLACK HENLEY',
+    category: 'T-Shirts',
+    type: 'tee',
+    price: 969,
+    compare_at_price: 1449,
     rating: 4.8,
     reviews_count: 19,
-    is_recent_drop: false,
+    is_recent_drop: true,
     is_bestseller: true,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/CopyofF_ab69a595-45ec-48d5-8fcc-fabe7246c1a7.jpg?v=1776160121&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/CopyofA_bfc8084f-ac9f-4867-996e-29d74079c52c.jpg?v=1776160121&width=1200',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/WhatsApp_Image_2026-04-27_at_3.30.25_PM.jpg?v=1777284279&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/WhatsApp_Image_2026-04-27_at_3.30.25_PM.jpg?v=1777284279&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofF_ab69a595-45ec-48d5-8fcc-fabe7246c1a7.jpg?v=1776160121&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofA_bfc8084f-ac9f-4867-996e-29d74079c52c.jpg?v=1776160121&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/WhatsApp_Image_2026-04-27_at_3.30.25_PM.jpg?v=1777284279&width=600&format=webp'
     ],
     sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'Subtle vertical pinstripes running down midnight-black fabric. Designed to offer effortless luxury day-to-night.',
+    description: 'Subtle all-black waffle Henley offering effortless luxury day-to-night.',
     details: [
-      'Premium breathable cotton twill',
-      'Tonal branded script chest embroidery',
-      'Matte black stealth buttons',
+      'Premium breathable waffle cotton',
+      'Tonal buttons',
       'Curved hem for untucked drape'
     ],
     size_chart_image: '',
@@ -209,248 +215,226 @@ export const PRODUCTS_DATA = [
   },
   {
     id: 'prod-5',
-    handle: 'all-in-or-nothing-tee',
-    title: 'Casino Oversized T-shirt',
-    category: 'T-Shirts',
-    type: 'tee',
-    price: 1999,
-    compare_at_price: 2997,
+    handle: 'cool-wash-wide-leg',
+    title: 'COOL WASH WIDE LEG',
+    category: 'Jeans',
+    type: 'jeans',
+    price: 1159,
+    compare_at_price: 1599,
     rating: 4.9,
     reviews_count: 31,
-    is_recent_drop: true,
-    is_bestseller: false,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/Copyof1_db2c1efc-a26a-447d-8a3a-7b08f92d4a2b.jpg?v=1775826679&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/DSC03666.jpg?v=1764095448&width=1200',
+    is_recent_drop: false,
+    is_bestseller: true,
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260328_220737.png?v=1774715954&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260328_220737.png?v=1774715954&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/Copyof1_db2c1efc-a26a-447d-8a3a-7b08f92d4a2b.jpg?v=1775826679&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03666.jpg?v=1764095448&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260328_220737.png?v=1774715954&width=600&format=webp'
     ],
-    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'The "All In Or Nothing" statement graphic printed across the back with vintage casino card motifs and gothic typography.',
+    sizes: ['28', '30', '32', '34', '36'],
+    description: 'Extra baggy wide leg denim engineered with washed aesthetic and stacked hems.',
     details: [
-      '240 GSM Super-combed Cotton',
-      'Fade-resistant screen print',
-      'Drop shoulder relaxed fit',
+      '13.5 oz Washed Heavy Black Denim',
+      'Drop wide leg fit',
       'Pre-shrunk fabric'
     ],
     size_chart_image: '',
-    size_chart_table: DEFAULT_SIZE_CHART,
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
     inventory: 15
   },
   {
     id: 'prod-6',
-    handle: 'wild-soul-hoodie',
-    title: 'Wild Soul Hoodie',
-    category: 'Hoodies',
-    type: 'hoodie',
-    price: 2995,
-    compare_at_price: 4895,
+    handle: 'dark-storm-black-baggy',
+    title: 'DARK STORM BLACK BAGGY',
+    category: 'Jeans',
+    type: 'jeans',
+    price: 1159,
+    compare_at_price: 1699,
     rating: 5.0,
     reviews_count: 27,
     is_recent_drop: false,
     is_bestseller: true,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/CopyofH_3045c801-cd0f-4073-a5e0-35dd9520ba23.jpg?v=1775825491&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/CopyofX.jpg?v=1775826462&width=1200',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239_ddae1332-b4f3-458d-8de1-b2ffb5907b99.png?v=1774728273&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239_ddae1332-b4f3-458d-8de1-b2ffb5907b99.png?v=1774728273&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofH_3045c801-cd0f-4073-a5e0-35dd9520ba23.jpg?v=1775825491&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofX.jpg?v=1775826462&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239_ddae1332-b4f3-458d-8de1-b2ffb5907b99.png?v=1774728273&width=600&format=webp'
     ],
-    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'Heavyweight fleece hoodie with intricate tonal jacquard floral camouflage texture and metallic brand plaque on pocket.',
+    sizes: ['28', '30', '32', '34', '36'],
+    description: 'Deep midnight dark storm baggy silhouette with relaxed taper and reinforced seams.',
     details: [
-      '420 GSM Brushed Cotton Fleece',
-      'Double layered heavyweight hood',
-      'Kangaroo front pocket with custom woven gold emblem',
-      'Ribbed knit cuffs and waistband'
+      '100% Heavy Twill Denim',
+      'Deep black shade retention',
+      'Custom silver alloy rivets'
     ],
     size_chart_image: '',
-    size_chart_table: DEFAULT_SIZE_CHART,
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
     inventory: 11
   },
   {
     id: 'prod-7',
-    handle: 'timeless-hampi-t-shirt',
-    title: 'Timeless Hampi T-shirt',
-    category: 'T-Shirts',
-    type: 'tee',
-    price: 2499,
-    compare_at_price: 3499,
+    handle: 'azure-fade-baggy',
+    title: 'AZURE FADE BAGGY',
+    category: 'Jeans',
+    type: 'jeans',
+    price: 1159,
+    compare_at_price: 1599,
     rating: 4.7,
     reviews_count: 15,
     is_recent_drop: true,
     is_bestseller: false,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/DSC03666.jpg?v=1764095448&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/DSC03663.jpg?v=1764095448&width=1200',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239.png?v=1774724515&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239.png?v=1774724515&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03666.jpg?v=1764095448&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/DSC03663.jpg?v=1764095448&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239.png?v=1774724515&width=600&format=webp'
     ],
-    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'Honoring ancient Dravidian stone carving with brutalist monolithic lines and sacred geometry printed in muted ash tones.',
+    sizes: ['28', '30', '32', '34', '36'],
+    description: 'Subtle gradient fade baggy denim for streetwear expression.',
     details: [
-      '260 GSM Heavy Cotton',
-      'Direct-to-garment soft hand printing',
-      'Signature neck ribbing',
+      '13.5 oz Raw Washed Denim',
+      'Artisanal fade treatment',
       'Pre-washed and anti-pilling treated'
     ],
     size_chart_image: '',
-    size_chart_table: DEFAULT_SIZE_CHART,
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
     inventory: 20
   },
   {
     id: 'prod-8',
-    handle: 'kaalvaish-classic-t-shirt',
-    title: 'Kaalvaish Classic T-shirt',
-    category: 'T-Shirts',
-    type: 'tee',
-    price: 1199,
-    compare_at_price: 2447,
+    handle: 'urban-drift-baggy',
+    title: 'URBAN DRIFT BAGGY',
+    category: 'Jeans',
+    type: 'jeans',
+    price: 1159,
+    compare_at_price: 1699,
     rating: 4.9,
     reviews_count: 53,
     is_recent_drop: false,
     is_bestseller: true,
-    image_url: 'https://www.kaalvaish.in/cdn/shop/files/CopyofA_bfc8084f-ac9f-4867-996e-29d74079c52c.jpg?v=1776160121&width=1200',
-    secondary_image: 'https://www.kaalvaish.in/cdn/shop/files/CopyofP_d05ff421-d691-4d24-aa10-686192169a87.jpg?v=1775827536&width=1200',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239.png?v=1774724515&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239.png?v=1774724515&width=600&format=webp',
     images: [
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofA_bfc8084f-ac9f-4867-996e-29d74079c52c.jpg?v=1776160121&width=1200',
-      'https://www.kaalvaish.in/cdn/shop/files/CopyofP_d05ff421-d691-4d24-aa10-686192169a87.jpg?v=1775827536&width=1200'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/file_00000000c2e471fa87bd7279d24c0239.png?v=1774724515&width=600&format=webp'
     ],
-    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'The foundation of the all-black wardrobe. Pure, deep black combed cotton with minimal tonal emblem embroidery at the hem.',
+    sizes: ['28', '30', '32', '34', '36'],
+    description: 'The foundation of the all-black streetwear wardrobe. Relaxed wide leg pooling fit.',
     details: [
-      '100% Organic Combed Compact Cotton',
-      'Silicon softened handfeel',
-      'Structured neckline that never sags',
-      'Reinforced shoulder-to-shoulder taping'
+      '100% Heavy Cotton Denim',
+      'Reinforced pockets',
+      'Pre-shrunk fabric'
     ],
     size_chart_image: '',
-    size_chart_table: DEFAULT_SIZE_CHART,
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
     inventory: 35
   },
   {
     id: 'prod-9',
-    handle: 'shadow-tailored-oversized-blazer',
-    title: 'Shadow Tailored Oversized Blazer',
-    category: 'Shirts',
-    type: 'shirt',
-    price: 4499,
-    compare_at_price: 6999,
+    handle: 'bluecore-wide-jeans',
+    title: 'BLUECORE WIDE JEANS',
+    category: 'Jeans',
+    type: 'jeans',
+    price: 1159,
+    compare_at_price: 1599,
     rating: 5.0,
     reviews_count: 12,
     is_recent_drop: true,
     is_bestseller: false,
-    image_url: 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?q=80&w=1200&auto=format&fit=crop',
-    secondary_image: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=1200&auto=format&fit=crop',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260328_220737.png?v=1774715954&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260328_220737.png?v=1774715954&width=600&format=webp',
     images: [
-      'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?q=80&w=1200&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=1200&auto=format&fit=crop'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/IMG_20260328_220737.png?v=1774715954&width=600&format=webp'
     ],
-    sizes: ['S', 'M', 'L', 'XL'],
-    description: 'Boxy double-breasted silhouette tailored in matte midnight wool blend with sharp padded shoulders and hidden horn buttons.',
+    sizes: ['28', '30', '32', '34', '36'],
+    description: 'Deep indigo tinted dark wide leg jeans with relaxed stacked hems.',
     details: [
-      'Structured Italian wool-poly blend',
-      'Fully lined with signature black jacquard satin',
-      'Deep interior passport pockets',
-      'Dry clean only'
+      '100% Heavy Twill Cotton Denim',
+      'Wide leg relaxed drape',
+      'Pre-washed and shrink resistant'
     ],
     size_chart_image: '',
-    size_chart_table: DEFAULT_SIZE_CHART,
-    inventory: 8
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
+    inventory: 14
   },
   {
     id: 'prod-10',
-    handle: 'cyberpunk-multi-pocket-cargo-pants',
-    title: 'Cyberpunk Multi-Pocket Cargo Pants',
+    handle: 'ocean-fade-denim',
+    title: 'OCEAN FADE DENIM',
     category: 'Jeans',
     type: 'jeans',
-    price: 3499,
-    compare_at_price: 5299,
+    price: 1060,
+    compare_at_price: 1499,
     rating: 4.8,
     reviews_count: 29,
     is_recent_drop: true,
     is_bestseller: true,
-    image_url: 'https://images.unsplash.com/photo-1517445312882-bc9910d016b7?q=80&w=1200&auto=format&fit=crop',
-    secondary_image: 'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=1200&auto=format&fit=crop',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp',
     images: [
-      'https://images.unsplash.com/photo-1517445312882-bc9910d016b7?q=80&w=1200&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1552374196-1ab2a1c593e8?q=80&w=1200&auto=format&fit=crop'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp'
     ],
     sizes: ['28', '30', '32', '34', '36'],
-    description: 'Utilitarian tactical baggy trousers with 8 modular 3D gusset pockets, industrial webbing, and ankle cinch cords.',
+    description: 'Subtle ocean wash fade across heavyweight dark streetwear denim.',
     details: [
-      'Ripstop tear-resistant cotton canvas',
-      'Water-repellent Teflon finish',
-      'D-ring matte black tactical clip hardware',
-      'Adjustable bungee toggle cuffs'
+      '13.5 oz Raw Washed Denim',
+      'Reinforced silver alloy hardware',
+      'Tailored wide stacked pooling fit'
     ],
     size_chart_image: '',
-    size_chart_table: [
-      { size: '28', waist: '29"', inseam: '31"', legOpening: '18"' },
-      { size: '30', waist: '31"', inseam: '32"', legOpening: '19"' },
-      { size: '32', waist: '33"', inseam: '32"', legOpening: '20"' },
-      { size: '34', waist: '35"', inseam: '33"', legOpening: '21"' },
-      { size: '36', waist: '37"', inseam: '33"', legOpening: '22"' }
-    ],
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
     inventory: 16
   },
   {
     id: 'prod-11',
-    handle: 'gothic-metal-heavy-knit-sweater',
-    title: 'Gothic Metal Heavy Knit Sweater',
-    category: 'Hoodies',
-    type: 'hoodie',
-    price: 3199,
-    compare_at_price: 4999,
+    handle: 'urban-shadow-wide-jeans',
+    title: 'URBAN SHADOW WIDE JEANS',
+    category: 'Jeans',
+    type: 'jeans',
+    price: 1056,
+    compare_at_price: 1599,
     rating: 4.9,
     reviews_count: 18,
     is_recent_drop: true,
     is_bestseller: false,
-    image_url: 'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=1200&auto=format&fit=crop',
-    secondary_image: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200&auto=format&fit=crop',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp',
     images: [
-      'https://images.unsplash.com/photo-1620799140408-edc6dcb6d633?q=80&w=1200&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1578632767115-351597cf2477?q=80&w=1200&auto=format&fit=crop'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp'
     ],
-    sizes: ['S', 'M', 'L', 'XL'],
-    description: 'Chunky gauge rib-knit crewneck sweater with distressed raw hems and subtle metallic thread accents woven throughout.',
+    sizes: ['28', '30', '32', '34', '36'],
+    description: 'Monochrome urban shadow wide fit trousers tailored for structural presence.',
     details: [
-      'Heavyweight 600g wool-cotton knit',
-      'Distressed ladder stitch detailing',
-      'Extended sleeve length for stacking',
-      'Hand wash cold, dry flat'
+      '100% Organic Combed Denim',
+      'Stealth black stitching',
+      'Reverse wash only with cold water'
     ],
     size_chart_image: '',
-    size_chart_table: DEFAULT_SIZE_CHART,
-    inventory: 7
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
+    inventory: 12
   },
   {
     id: 'prod-12',
-    handle: 'nocturnal-acid-wash-distressed-tee',
-    title: 'Nocturnal Acid-Wash Distressed Tee',
-    category: 'T-Shirts',
-    type: 'tee',
-    price: 2199,
-    compare_at_price: 3199,
+    handle: 'urbex-epic',
+    title: 'URBEX EPIC EXTRA BAGGY',
+    category: 'Jeans',
+    type: 'jeans',
+    price: 1020,
+    compare_at_price: 1499,
     rating: 4.8,
     reviews_count: 22,
     is_recent_drop: true,
     is_bestseller: false,
-    image_url: 'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=1200&auto=format&fit=crop',
-    secondary_image: 'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=1200&auto=format&fit=crop',
+    image_url: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp',
+    secondary_image: 'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp',
     images: [
-      'https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=1200&auto=format&fit=crop',
-      'https://images.unsplash.com/photo-1583743814966-8936f5b7be1a?q=80&w=1200&auto=format&fit=crop'
+      'https://cdn.shopify.com/s/files/1/0800/0313/7790/files/Picsart_26-03-23_23-19-52-118_jpg.jpg?v=1774288251&width=600&format=webp'
     ],
-    sizes: ['S', 'M', 'L', 'XL', 'XXL'],
-    description: 'Mineral acid-washed charcoal black tee with laser micro-distressing around the neckline and raw hem cuffs.',
+    sizes: ['28', '30', '32', '34', '36'],
+    description: 'Extra baggy volume with pooling hem lines engineered for modern aesthetics.',
     details: [
-      '260 GSM Single Jersey Cotton',
-      'Hand-applied artisanal mineral acid wash',
-      'Subtle chest micro-branding in tonal black',
-      'Relaxed boxy silhouette'
+      '13.5 oz Washed Heavy Denim',
+      'Deep black shade preservation',
+      'Pre-shrunk fabric'
     ],
     size_chart_image: '',
-    size_chart_table: DEFAULT_SIZE_CHART,
+    size_chart_table: DEFAULT_BOTTOMS_SIZE_CHART,
     inventory: 19
   }
 ];

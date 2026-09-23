@@ -21,8 +21,8 @@ import GoogleLogo from './GoogleLogo';
 import { fetchAPI, checkDelhiveryPincode } from '../lib/api';
 import { useAuth } from '../lib/AuthContext';
 import { getCachedCart, saveCartToCache } from '../lib/cartManager';
-import { getSavedShippingAddress, saveCustomerShippingAddress } from '../lib/customerAddress';
 import { generateOrderInvoicePDF } from '../lib/invoiceGenerator';
+import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
 
 export default function CartDrawer() {
   const navigate = useNavigate();
@@ -165,6 +165,82 @@ export default function CartDrawer() {
   const finalTotal = subtotal + codFee;
   const remainingBalance = Math.max(0, finalTotal - advanceAmount);
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && window.Razorpay) {
+        return resolve(true);
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const submitOrderToServer = async (paymentResponse = null) => {
+    let paymentMethodName = 'Full Online Payment';
+    let paymentDetails = { 
+      type: 'online', 
+      advance_paid: finalTotal, 
+      remaining_balance: 0,
+      payment_id: paymentResponse?.razorpay_payment_id || null,
+      razorpay_order_id: paymentResponse?.razorpay_order_id || null
+    };
+
+    if (selectedPayment === 'partial') {
+      paymentMethodName = 'Partial Payment';
+      paymentDetails = { 
+        type: 'partial', 
+        advance_paid: advanceAmount, 
+        remaining_balance: remainingBalance,
+        payment_id: paymentResponse?.razorpay_payment_id || null,
+        razorpay_order_id: paymentResponse?.razorpay_order_id || null,
+        note: `Advance ₹${advanceAmount} confirmed online. Balance ₹${remainingBalance} payable upon delivery.` 
+      };
+    } else if (selectedPayment === 'cod') {
+      paymentMethodName = 'Cash on Delivery';
+      paymentDetails = { 
+        type: 'cod', 
+        cod_fee: codFee, 
+        amount_due: finalTotal,
+        note: `Full payment of ₹${finalTotal} (including ₹${codFee} COD handling) payable at delivery.` 
+      };
+    }
+
+    if (selectedPayment !== 'cod' && !paymentResponse?.razorpay_payment_id) {
+      throw new Error('Payment was not completed. Order placement aborted.');
+    }
+
+    const res = await fetchAPI('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify({
+        user_id: user.id,
+        customer_name: formData.name.trim(),
+        email: user.email || formData.email.trim(),
+        phone: formData.phone.trim(),
+        shipping_address: `${formData.address.trim()}, ${formData.city.trim()} - ${formData.pincode.trim()}`,
+        city: formData.city.trim(),
+        pincode: formData.pincode.trim(),
+        items: items,
+        subtotal: subtotal,
+        cod_fee: codFee,
+        total: finalTotal,
+        payment_method: paymentMethodName,
+        payment_details: paymentDetails,
+        payment_id: paymentResponse?.razorpay_payment_id || null
+      })
+    });
+
+    if (res && res.order) {
+      setLastPlacedOrder(res.order);
+      // Automatically save address to profile and cache for next checkout
+      await saveCustomerShippingAddress(user, formData, updateUser);
+      saveCart([]); // clear bag
+      setCurrentStep('success');
+    }
+  };
+
   // Handle Order Placement
   const handlePlaceOrder = async (e) => {
     if (e) e.preventDefault();
@@ -184,58 +260,97 @@ export default function CartDrawer() {
 
     setPlacingOrder(true);
 
-    let paymentMethodName = 'Full Online Payment';
-    let paymentDetails = { type: 'online', advance_paid: finalTotal, remaining_balance: 0 };
-
-    if (selectedPayment === 'partial') {
-      paymentMethodName = 'Partial Payment';
-      paymentDetails = { 
-        type: 'partial', 
-        advance_paid: advanceAmount, 
-        remaining_balance: remainingBalance,
-        note: `Advance ₹${advanceAmount} confirmed via UPI. Remaining ₹${remainingBalance} payable upon delivery.` 
-      };
-    } else if (selectedPayment === 'cod') {
-      paymentMethodName = 'Cash on Delivery';
-      paymentDetails = { 
-        type: 'cod', 
-        cod_fee: codFee, 
-        amount_due: finalTotal,
-        note: `Full payment of ₹${finalTotal} (including ₹${codFee} COD handling) payable at delivery.` 
-      };
-    }
-
     try {
-      const res = await fetchAPI('/api/orders', {
-        method: 'POST',
-        body: JSON.stringify({
-          user_id: user.id,
-          customer_name: formData.name.trim(),
-          email: user.email || formData.email.trim(),
-          phone: formData.phone.trim(),
-          shipping_address: `${formData.address.trim()}, ${formData.city.trim()} - ${formData.pincode.trim()}`,
-          city: formData.city.trim(),
-          pincode: formData.pincode.trim(),
-          items: items,
-          subtotal: subtotal,
-          cod_fee: codFee,
-          total: finalTotal,
-          payment_method: paymentMethodName,
-          payment_details: paymentDetails
-        })
-      });
+      if (selectedPayment === 'cod') {
+        await submitOrderToServer();
+      } else {
+        // Online or Partial Payment via Razorpay
+        const amountToPay = selectedPayment === 'partial' ? advanceAmount : finalTotal;
+        const loaded = await loadRazorpayScript();
 
-      if (res && res.order) {
-        setLastPlacedOrder(res.order);
-        // Automatically save address to profile and cache for next checkout
-        await saveCustomerShippingAddress(user, formData, updateUser);
-        saveCart([]); // clear bag
-        setCurrentStep('success');
+        if (!loaded) {
+          alert('Could not load payment gateway. Please check your connection or choose Cash on Delivery.');
+          setPlacingOrder(false);
+          return;
+        }
+
+        let rzpOrder = null;
+        try {
+          rzpOrder = await fetchAPI('/api/payment/order', {
+            method: 'POST',
+            body: JSON.stringify({
+              amount: amountToPay,
+              currency: 'INR',
+              receipt: `rcpt_${Date.now()}`
+            })
+          });
+        } catch (apiErr) {
+          console.error('Payment order endpoint error:', apiErr);
+        }
+
+        if (!rzpOrder || !rzpOrder.id || !window.Razorpay) {
+          alert('Payment could not be initialized with the gateway. Please try again or select Cash on Delivery.');
+          setPlacingOrder(false);
+          return;
+        }
+
+        const options = {
+          key: rzpOrder.key || 'rzp_test_RHmiNQk77x5FMw',
+          amount: rzpOrder.amount,
+          currency: rzpOrder.currency || 'INR',
+          name: 'CONFELION',
+          description: selectedPayment === 'partial' ? 'Advance Order Booking' : 'Order Checkout',
+          image: '/images/confelion-icon.png',
+          order_id: rzpOrder.id.startsWith('order_') ? rzpOrder.id : undefined,
+          handler: async function (response) {
+            try {
+              if (!response || !response.razorpay_payment_id) {
+                alert('Payment could not be verified. Order was not placed.');
+                setPlacingOrder(false);
+                return;
+              }
+              await fetchAPI('/api/payment/verify', {
+                method: 'POST',
+                body: JSON.stringify({
+                  ...response,
+                  user_id: user?.id || null
+                })
+              }).catch((vErr) => console.warn('Payment verification note:', vErr));
+
+              await submitOrderToServer(response);
+            } catch (pErr) {
+              console.error(pErr);
+              alert('Error finalizing order: ' + (pErr.message || 'Please contact support.'));
+            } finally {
+              setPlacingOrder(false);
+            }
+          },
+          prefill: {
+            name: formData.name.trim(),
+            email: user.email || formData.email.trim(),
+            contact: formData.phone.trim(),
+          },
+          theme: {
+            color: '#000000'
+          },
+          modal: {
+            ondismiss: function () {
+              setPlacingOrder(false);
+            }
+          }
+        };
+
+        const razorpayInstance = new window.Razorpay(options);
+        razorpayInstance.on('payment.failed', function (resp) {
+          console.error('Payment failed:', resp.error);
+          alert(`Payment failed: ${resp.error?.description || 'Transaction declined'}`);
+          setPlacingOrder(false);
+        });
+        razorpayInstance.open();
       }
     } catch (err) {
       console.error(err);
-      alert('Error placing order. Please try again.');
-    } finally {
+      alert('Error placing order: ' + (err.message || 'Please try again.'));
       setPlacingOrder(false);
     }
   };
@@ -334,8 +449,13 @@ export default function CartDrawer() {
                   <div key={`${item.handle}-${item.size}-${idx}`} className="flex gap-3.5 pb-4 border-b border-white/10">
                     <Link to={`/product/${item.handle}`} onClick={() => setIsOpen(false)}>
                       <img
-                        src={item.image}
+                        src={optimizeImageUrl(item.image, { width: 160, height: 200, format: 'webp' })}
                         alt={item.title}
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = PLACEHOLDER_IMAGE;
+                        }}
                         className="w-16 h-20 object-cover bg-zinc-950 border border-white/10 shrink-0"
                       />
                     </Link>

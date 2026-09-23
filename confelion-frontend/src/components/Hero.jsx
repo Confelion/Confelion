@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 
 export default function Hero({ 
@@ -13,6 +14,8 @@ export default function Hero({
   overlayOpacity = 40, // 0 to 90
   viewport = null // 'mobile' | 'tablet' | 'desktop' | null
 }) {
+  const [imgLoaded, setImgLoaded] = useState(false);
+
   // Font family mappings
   const fontClass = {
     sans: 'font-sans font-black',
@@ -56,20 +59,30 @@ export default function Hero({
   return (
     <section className="relative w-full bg-black overflow-hidden select-none">
       {/* Responsive Images */}
-      <div className="relative w-full">
+      <div className={`relative w-full min-h-[62vh] ${!imgLoaded ? 'luxury-shimmer' : ''}`}>
         {viewport === 'mobile' ? (
           <img
             src={resolvedMobile}
             alt="CONFELION All Black Fashion Mobile"
-            className="w-full h-auto min-h-[62vh] max-h-[75vh] object-cover object-center block"
-            priority="high"
+            className={`w-full h-auto min-h-[62vh] max-h-[75vh] object-cover object-center block transition-opacity duration-500 ${
+              imgLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+            fetchPriority="high"
+            loading="eager"
+            decoding="async"
+            onLoad={() => setImgLoaded(true)}
           />
         ) : viewport === 'desktop' ? (
           <img
             src={resolvedPc}
             alt="CONFELION All Black Fashion"
-            className="w-full h-auto max-h-[92vh] object-cover object-top block"
-            priority="high"
+            className={`w-full h-auto max-h-[92vh] object-cover object-top block transition-opacity duration-500 ${
+              imgLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
+            fetchPriority="high"
+            loading="eager"
+            decoding="async"
+            onLoad={() => setImgLoaded(true)}
           />
         ) : (
           <>
@@ -77,15 +90,25 @@ export default function Hero({
             <img
               src={resolvedPc}
               alt="CONFELION All Black Fashion"
-              className="hidden md:block w-full h-auto max-h-[92vh] object-cover object-top"
-              priority="high"
+              className={`hidden md:block w-full h-auto max-h-[92vh] object-cover object-top transition-opacity duration-500 ${
+                imgLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+              onLoad={() => setImgLoaded(true)}
             />
             {/* Mobile Image */}
             <img
               src={resolvedMobile}
               alt="CONFELION All Black Fashion Mobile"
-              className="block md:hidden w-full h-auto min-h-[75vh] object-cover object-center"
-              priority="high"
+              className={`block md:hidden w-full h-auto min-h-[75vh] object-cover object-center transition-opacity duration-500 ${
+                imgLoaded ? 'opacity-100' : 'opacity-0'
+              }`}
+              fetchPriority="high"
+              loading="eager"
+              decoding="async"
+              onLoad={() => setImgLoaded(true)}
             />
           </>
         )}

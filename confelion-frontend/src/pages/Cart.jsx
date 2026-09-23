@@ -19,8 +19,8 @@ import GoogleLogo from '../components/GoogleLogo';
 import { fetchAPI, checkDelhiveryPincode } from '../lib/api';
 import { useAuth } from '../lib/AuthContext';
 import { getCachedCart, saveCartToCache } from '../lib/cartManager';
-import { getSavedShippingAddress, saveCustomerShippingAddress } from '../lib/customerAddress';
 import { generateOrderInvoicePDF } from '../lib/invoiceGenerator';
+import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
 
 export default function Cart() {
   const navigate = useNavigate();
@@ -194,6 +194,10 @@ export default function Cart() {
       };
     }
 
+    if (selectedPayment !== 'cod' && !paymentResponse?.razorpay_payment_id) {
+      throw new Error('Payment was not completed. Order placement aborted.');
+    }
+
     const res = await fetchAPI('/api/orders', {
       method: 'POST',
       body: JSON.stringify({
@@ -249,68 +253,89 @@ export default function Cart() {
         const amountToPay = selectedPayment === 'partial' ? advanceAmount : finalTotal;
         const loaded = await loadRazorpayScript();
         
-        if (loaded) {
-          // Create Razorpay order on backend
-          let rzpOrder = null;
-          try {
-            rzpOrder = await fetchAPI('/api/payment/order', {
-              method: 'POST',
-              body: JSON.stringify({
-                amount: amountToPay,
-                currency: 'INR',
-                receipt: `rcpt_${Date.now()}`
-              })
-            });
-          } catch (apiErr) {
-            console.warn('Payment order endpoint note:', apiErr);
-          }
-
-          if (rzpOrder && rzpOrder.id && !rzpOrder.mock && window.Razorpay) {
-            const options = {
-              key: rzpOrder.key || '',
-              amount: rzpOrder.amount,
-              currency: rzpOrder.currency || 'INR',
-              name: 'CONFELION',
-              description: selectedPayment === 'partial' ? 'Advance Order Booking' : 'Order Checkout',
-              image: '/images/confelion-icon.png',
-              order_id: rzpOrder.id,
-              handler: async function (response) {
-                try {
-                  // Verify payment signature
-                  await fetchAPI('/api/payment/verify', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                      ...response,
-                      user_id: user.id
-                    })
-                  });
-                } catch (vErr) {
-                  console.warn('Payment verification note:', vErr);
-                }
-                await submitOrderToServer(response);
-              },
-              prefill: {
-                name: formData.name.trim(),
-                email: user.email || formData.email.trim(),
-                contact: formData.phone.trim(),
-              },
-              theme: {
-                color: '#000000',
-              },
-              modal: {
-                ondismiss: function () {
-                  setPlacingOrder(false);
-                }
-              }
-            };
-            const rzpInstance = new window.Razorpay(options);
-            rzpInstance.open();
-            return;
-          }
+        if (!loaded) {
+          alert('Could not load payment gateway. Please check your connection or choose Cash on Delivery.');
+          setPlacingOrder(false);
+          return;
         }
-        
-        // Direct order creation fallback
-        await submitOrderToServer();
+
+        let rzpOrder = null;
+        try {
+          rzpOrder = await fetchAPI('/api/payment/order', {
+            method: 'POST',
+            body: JSON.stringify({
+              amount: amountToPay,
+              currency: 'INR',
+              receipt: `rcpt_${Date.now()}`
+            })
+          });
+        } catch (apiErr) {
+          console.error('Payment order endpoint error:', apiErr);
+        }
+
+        if (!rzpOrder || !rzpOrder.id || !window.Razorpay) {
+          alert('Payment could not be initialized with the gateway. Please try again or select Cash on Delivery.');
+          setPlacingOrder(false);
+          return;
+        }
+
+        const options = {
+          key: rzpOrder.key || 'rzp_test_RHmiNQk77x5FMw',
+          amount: rzpOrder.amount,
+          currency: rzpOrder.currency || 'INR',
+          name: 'CONFELION',
+          description: selectedPayment === 'partial' ? 'Advance Order Booking' : 'Order Checkout',
+          image: '/images/confelion-icon.png',
+          order_id: rzpOrder.id.startsWith('order_') ? rzpOrder.id : undefined,
+          handler: async function (response) {
+            try {
+              if (!response || !response.razorpay_payment_id) {
+                alert('Payment could not be verified. Order was not placed.');
+                setPlacingOrder(false);
+                return;
+              }
+              // Verify payment signature
+              await fetchAPI('/api/payment/verify', {
+                method: 'POST',
+                body: JSON.stringify({
+                  ...response,
+                  user_id: user?.id || null
+                })
+              }).catch((vErr) => {
+                console.warn('Payment verification note:', vErr);
+              });
+
+              await submitOrderToServer(response);
+            } catch (pErr) {
+              console.error(pErr);
+              alert('Error finalizing order: ' + (pErr.message || 'Please contact support.'));
+            } finally {
+              setPlacingOrder(false);
+            }
+          },
+          prefill: {
+            name: formData.name.trim(),
+            email: user.email || formData.email.trim(),
+            contact: formData.phone.trim(),
+          },
+          theme: {
+            color: '#000000',
+          },
+          modal: {
+            ondismiss: function () {
+              setPlacingOrder(false);
+              alert('Payment cancelled. Order was not placed.');
+            }
+          }
+        };
+
+        const rzpInstance = new window.Razorpay(options);
+        rzpInstance.on('payment.failed', function (resp) {
+          setPlacingOrder(false);
+          alert('Payment Failed: ' + (resp.error?.description || 'Transaction unsuccessful. Order was not placed.'));
+        });
+        rzpInstance.open();
+        return;
       }
     } catch (err) {
       console.error(err);
@@ -389,8 +414,13 @@ export default function Cart() {
                   <div key={`${item.handle}-${item.size}-${idx}`} className="flex gap-4 p-4 bg-zinc-950 border border-white/10">
                     <Link to={`/product/${item.handle}`}>
                       <img
-                        src={item.image}
+                        src={optimizeImageUrl(item.image, { width: 200, height: 260, format: 'webp' })}
                         alt={item.title}
+                        loading="lazy"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = PLACEHOLDER_IMAGE;
+                        }}
                         className="w-20 h-26 object-cover bg-black border border-white/10 shrink-0"
                       />
                     </Link>

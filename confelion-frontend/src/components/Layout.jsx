@@ -5,6 +5,7 @@ import Navigation from './Navigation';
 import Footer from './Footer';
 import CartDrawer from './CartDrawer';
 import QuickAddModal from './QuickAddModal';
+import BottomNav from './BottomNav';
 import { STORE_SETTINGS } from '../data/mockData';
 
 export default function Layout() {
@@ -21,13 +22,14 @@ export default function Layout() {
         <AnnouncementBar />
         <Navigation />
 
-        <main className="flex-1 bg-black">
+        <main className="flex-1 bg-black pb-20 md:pb-0">
           <Outlet />
         </main>
 
         <Footer />
         <CartDrawer />
         <QuickAddModal />
+        <BottomNav />
       </div>
     </>
   );

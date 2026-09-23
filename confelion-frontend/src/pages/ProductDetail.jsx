@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   ChevronDown, 
@@ -14,16 +14,19 @@ import {
   Ruler,
   MapPin,
   Loader2,
-  Clock
+  Clock,
+  Play
 } from 'lucide-react';
-import { fetchAPI, checkDelhiveryPincode } from '../lib/api';
+import { fetchAPI, checkDelhiveryPincode, getStoredProducts } from '../lib/api';
 import { fetchFirestoreProducts } from '../lib/firebase';
-import { PRODUCTS_DATA, DEFAULT_SIZE_CHART } from '../data/mockData';
+import { PRODUCTS_DATA, DEFAULT_SIZE_CHART, DEFAULT_TOPS_SIZE_CHART, DEFAULT_BOTTOMS_SIZE_CHART } from '../data/mockData';
 import ProductGrid from '../components/ProductGrid';
 import { addItemToCart } from '../lib/cartManager';
+import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
 
 export default function ProductDetail() {
   const { handle } = useParams();
+  const carouselRef = useRef(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(0);
@@ -65,6 +68,7 @@ export default function ProductDetail() {
   }, []);
 
   const loadProduct = async () => {
+    // 1. Try fetchAPI
     try {
       const res = await fetchAPI(`/api/products/${handle}`);
       if (res && res.product) {
@@ -77,21 +81,63 @@ export default function ProductDetail() {
       }
     } catch (err) {}
 
-    // Fallback to Firestore products collection for newly created items
+    // 2. Direct fetch to Express server
     try {
-      const fsProds = await fetchFirestoreProducts();
-      const found = fsProds.find(p => p.handle === handle || p.id === handle);
+      const res = await fetch(`/api/products/${encodeURIComponent(handle)}`);
+      if (res.ok) {
+        const json = await res.json();
+        if (json && json.product) {
+          setData(json);
+          if (json?.variants?.length > 0) {
+            setSelectedSize(json.variants[0].title || 'M');
+          }
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (e) {}
+
+    // 3. Fallback to getStoredProducts() and PRODUCTS_DATA
+    try {
+      const stored = getStoredProducts();
+      let found = stored.find(p => p.handle === handle || String(p.id) === String(handle));
+      if (!found) {
+        found = PRODUCTS_DATA.find(p => p.handle === handle || String(p.id) === String(handle));
+      }
       if (found) {
         const productObj = {
           product: found,
           images: (found.images && found.images.length > 0) ? found.images : [found.image_url],
+          productImages: ((found.images && found.images.length > 0) ? found.images : [found.image_url]).map((url, i) => ({ id: i + 1, image_url: url })),
           variants: (found.sizes || ['S', 'M', 'L', 'XL', 'XXL']).map(s => ({ id: s, title: s, inventory_quantity: found.inventory !== undefined ? found.inventory : 10 })),
-          sizeChart: found.size_chart_mode === 'image' && found.size_chart_image ? null : (found.size_chart || DEFAULT_SIZE_CHART),
-          sizeChartImage: found.size_chart_mode === 'image' ? found.size_chart_image : null
+          sizeChart: found.size_chart_table || DEFAULT_SIZE_CHART,
+          sizeChartImage: found.size_chart_image || null
         };
         setData(productObj);
         if (productObj.variants.length > 0) {
-          setSelectedSize(productObj.variants[0].title);
+          setSelectedSize(productObj.variants[0].title || 'M');
+        }
+        setLoading(false);
+        return;
+      }
+    } catch (e) {}
+
+    // 4. Fallback to Firestore products collection
+    try {
+      const fsProds = await fetchFirestoreProducts();
+      const found = fsProds.find(p => p.handle === handle || String(p.id) === String(handle));
+      if (found) {
+        const productObj = {
+          product: found,
+          images: (found.images && found.images.length > 0) ? found.images : [found.image_url],
+          productImages: ((found.images && found.images.length > 0) ? found.images : [found.image_url]).map((url, i) => ({ id: i + 1, image_url: url })),
+          variants: (found.sizes || ['S', 'M', 'L', 'XL', 'XXL']).map(s => ({ id: s, title: s, inventory_quantity: found.inventory !== undefined ? found.inventory : 10 })),
+          sizeChart: found.size_chart_table || DEFAULT_SIZE_CHART,
+          sizeChartImage: found.size_chart_image || null
+        };
+        setData(productObj);
+        if (productObj.variants.length > 0) {
+          setSelectedSize(productObj.variants[0].title || 'M');
         }
       }
     } catch (fsErr) {
@@ -143,8 +189,27 @@ export default function ProductDetail() {
   }
 
   const { product, productImages, variants, details } = data;
-  const images = productImages?.map((p) => p.image_url) || [product.image_url];
-  const sizes = variants?.map((v) => v.title) || ['S', 'M', 'L', 'XL', 'XXL'];
+
+  const isBottom = product.size_chart_type === 'bottoms' ||
+    ['jeans', 'pant', 'pants', 'bottom', 'bottoms'].includes((product.type || '').toLowerCase()) ||
+    (product.category || '').toLowerCase().includes('jean') ||
+    (product.category || '').toLowerCase().includes('pant') ||
+    (product.category || '').toLowerCase().includes('baggy');
+
+  // Consolidate all image assets & video media
+  const rawImages = productImages?.map((p) => p.image_url) || (product.images || [product.image_url]);
+  const images = [...rawImages];
+  if (product.images && Array.isArray(product.images)) {
+    product.images.forEach(img => {
+      if (img && !images.includes(img)) images.push(img);
+    });
+  }
+  if (product.video_url && !images.includes(product.video_url)) {
+    images.push(product.video_url);
+  }
+  const isMediaVideo = (url) => typeof url === 'string' && (url.endsWith('.mp4') || url.includes('/videos/') || url.includes('video'));
+
+  const sizes = variants?.map((v) => v.title) || (isBottom ? ['28', '30', '32', '34', '36'] : ['S', 'M', 'L', 'XL', 'XXL']);
 
   const discountPercent = product.compare_at_price 
     ? Math.round(((product.compare_at_price - product.price) / product.compare_at_price) * 100) 
@@ -189,13 +254,7 @@ export default function ProductDetail() {
   // Helper to format table values according to inches / cm
   const sizeTable = (product.size_chart_table && product.size_chart_table.length > 0)
     ? product.size_chart_table
-    : (DEFAULT_SIZE_CHART || [
-        { size: 'S', chest: '40"', length: '28"', shoulder: '18.5"', sleeve: '8.5"' },
-        { size: 'M', chest: '42"', length: '29"', shoulder: '19.5"', sleeve: '9.0"' },
-        { size: 'L', chest: '44"', length: '30"', shoulder: '20.5"', sleeve: '9.5"' },
-        { size: 'XL', chest: '46"', length: '31"', shoulder: '21.5"', sleeve: '10.0"' },
-        { size: 'XXL', chest: '48"', length: '32"', shoulder: '22.5"', sleeve: '10.5"' }
-      ]);
+    : (isBottom ? DEFAULT_BOTTOMS_SIZE_CHART : DEFAULT_TOPS_SIZE_CHART);
 
   const convertVal = (valStr) => {
     if (!valStr) return '-';
@@ -229,27 +288,103 @@ export default function ProductDetail() {
           
           {/* Left Column: Media Gallery */}
           <div className="lg:col-span-7">
-            {/* Mobile Swipeable Carousel */}
-            <div className="block lg:hidden">
+            {/* Mobile Swipeable Full-Bleed Carousel */}
+            <div className="block lg:hidden relative">
               <div className="relative aspect-[3/4] w-full bg-zinc-950 overflow-hidden">
-                <img
-                  src={images[selectedImage]}
-                  alt={product.title}
-                  className="w-full h-full object-cover object-top"
-                />
+                <div 
+                  ref={carouselRef}
+                  onScroll={(e) => {
+                    const scrollLeft = e.currentTarget.scrollLeft;
+                    const width = e.currentTarget.clientWidth || 1;
+                    const idx = Math.round(scrollLeft / width);
+                    if (idx !== selectedImage && idx >= 0 && idx < images.length) {
+                      setSelectedImage(idx);
+                    }
+                  }}
+                  className="flex w-full h-full overflow-x-auto snap-x snap-mandatory scrollbar-none no-scrollbar"
+                >
+                  {images.map((item, idx) => (
+                    <div key={idx} className="w-full h-full shrink-0 snap-center relative bg-zinc-950 luxury-shimmer">
+                      {isMediaVideo(item) ? (
+                        <video
+                          src={item}
+                          autoPlay
+                          muted
+                          loop
+                          playsInline
+                          controls
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={optimizeImageUrl(item, { width: 900, height: 1200, format: 'webp' })}
+                          alt={`${product.title} view ${idx + 1}`}
+                          className="w-full h-full object-cover object-top"
+                          loading={idx === 0 ? 'eager' : 'lazy'}
+                          decoding="async"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = PLACEHOLDER_IMAGE;
+                          }}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Overlaid Pagination Dots Indicator (...) matching reference */}
+                <div className="absolute bottom-3 left-0 right-0 flex items-center justify-center gap-1.5 z-10 pointer-events-none">
+                  {images.map((_, idx) => (
+                    <span
+                      key={idx}
+                      className={`h-1.5 rounded-full transition-all duration-300 ${
+                        selectedImage === idx ? 'w-6 bg-white shadow-md' : 'w-1.5 bg-white/40'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                {/* Slide Counter Badge */}
+                <div className="absolute top-3 right-3 bg-black/60 backdrop-blur-md px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold text-white border border-white/15 z-10">
+                  {selectedImage + 1} / {images.length}
+                </div>
               </div>
 
               {/* Mobile Thumbnail strip */}
-              <div className="flex items-center gap-1.5 overflow-x-auto mt-2.5 pb-2 scrollbar-none">
-                {images.map((img, idx) => (
+              <div className="flex items-center gap-2 overflow-x-auto mt-2.5 pb-2 scrollbar-none no-scrollbar">
+                {images.map((item, idx) => (
                   <button
                     key={idx}
-                    onClick={() => setSelectedImage(idx)}
-                    className={`w-12 h-14 shrink-0 bg-zinc-950 overflow-hidden border ${
-                      selectedImage === idx ? 'border-white' : 'border-white/20 opacity-60'
+                    onClick={() => {
+                      setSelectedImage(idx);
+                      if (carouselRef.current) {
+                        carouselRef.current.scrollTo({
+                          left: idx * carouselRef.current.clientWidth,
+                          behavior: 'smooth'
+                        });
+                      }
+                    }}
+                    className={`relative w-14 h-16 shrink-0 bg-zinc-950 overflow-hidden border transition-all ${
+                      selectedImage === idx ? 'border-white ring-1 ring-white/50' : 'border-white/20 opacity-50 hover:opacity-100'
                     }`}
                   >
-                    <img src={img} alt="" className="w-full h-full object-cover" />
+                    {isMediaVideo(item) ? (
+                      <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-white">
+                        <Play className="w-4 h-4 fill-white" />
+                      </div>
+                    ) : (
+                      <img
+                        src={optimizeImageUrl(item, { width: 160, height: 200, format: 'webp' })}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = PLACEHOLDER_IMAGE;
+                        }}
+                      />
+                    )}
                   </button>
                 ))}
               </div>
@@ -257,14 +392,31 @@ export default function ProductDetail() {
 
             {/* Desktop Stacked Images View */}
             <div className="hidden lg:flex flex-col gap-4">
-              {images.map((img, idx) => (
-                <div key={idx} className="relative aspect-[3/4] w-full bg-zinc-950 overflow-hidden border border-white/10">
-                  <img
-                    src={img}
-                    alt={`${product.title} view ${idx + 1}`}
-                    className="w-full h-full object-cover object-top"
-                    loading={idx === 0 ? 'eager' : 'lazy'}
-                  />
+              {images.map((item, idx) => (
+                <div key={idx} className="relative aspect-[3/4] w-full bg-zinc-950 overflow-hidden border border-white/10 luxury-shimmer">
+                  {isMediaVideo(item) ? (
+                    <video
+                      src={item}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      controls
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <img
+                      src={optimizeImageUrl(item, { width: 1000, height: 1333, format: 'webp' })}
+                      alt={`${product.title} view ${idx + 1}`}
+                      className="w-full h-full object-cover object-top"
+                      loading={idx === 0 ? 'eager' : 'lazy'}
+                      decoding="async"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = PLACEHOLDER_IMAGE;
+                      }}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -560,15 +712,20 @@ export default function ProductDetail() {
               <span className="text-[11px] font-bold uppercase tracking-[0.2em]">Sizing Chart & Fit Guide</span>
             </div>
             <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white mb-4">
-              {product.title} Measurements
+              {product.size_chart_title || product.title} Measurements
             </h2>
 
             {/* If a custom size chart image is uploaded */}
             {product.size_chart_image ? (
               <div className="mb-6 border border-white/15 bg-zinc-950 p-2">
                 <img
-                  src={product.size_chart_image}
+                  src={optimizeImageUrl(product.size_chart_image, { width: 800, height: 800, format: 'webp' })}
                   alt="Size Chart"
+                  loading="lazy"
+                  onError={(e) => {
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = PLACEHOLDER_IMAGE;
+                  }}
                   className="w-full max-h-96 object-contain mx-auto"
                 />
               </div>
@@ -578,7 +735,7 @@ export default function ProductDetail() {
             <div className="mb-6">
               <div className="flex items-center justify-between mb-3">
                 <span className="text-xs font-bold uppercase tracking-wider text-zinc-300">
-                  Garment Dimensions
+                  {isBottom ? 'Bottoms / Pants Garment Dimensions' : 'Tops / Shirts Garment Dimensions'}
                 </span>
                 <div className="flex border border-white/20">
                   <button
@@ -605,10 +762,22 @@ export default function ProductDetail() {
                   <thead className="bg-zinc-900 border-b border-white/10 uppercase text-[10px] font-bold tracking-wider text-zinc-300">
                     <tr>
                       <th className="py-3 px-4">Size</th>
-                      <th className="py-3 px-4">Chest / Bust</th>
-                      <th className="py-3 px-4">Body Length</th>
-                      <th className="py-3 px-4">Shoulder</th>
-                      <th className="py-3 px-4">Sleeve</th>
+                      {isBottom ? (
+                        <>
+                          <th className="py-3 px-4">Waist</th>
+                          <th className="py-3 px-4">Total Length</th>
+                          <th className="py-3 px-4">Inseam</th>
+                          <th className="py-3 px-4">Hip / Thigh</th>
+                          <th className="py-3 px-4">Leg Opening</th>
+                        </>
+                      ) : (
+                        <>
+                          <th className="py-3 px-4">Chest / Bust</th>
+                          <th className="py-3 px-4">Body Length</th>
+                          <th className="py-3 px-4">Shoulder</th>
+                          <th className="py-3 px-4">Sleeve</th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10 font-mono text-zinc-300">
@@ -620,10 +789,22 @@ export default function ProductDetail() {
                         }`}
                       >
                         <td className="py-3 px-4 font-sans font-bold text-white">{row.size}</td>
-                        <td className="py-3 px-4">{convertVal(row.chest)}</td>
-                        <td className="py-3 px-4">{convertVal(row.length)}</td>
-                        <td className="py-3 px-4">{convertVal(row.shoulder)}</td>
-                        <td className="py-3 px-4">{convertVal(row.sleeve)}</td>
+                        {isBottom ? (
+                          <>
+                            <td className="py-3 px-4">{convertVal(row.waist)}</td>
+                            <td className="py-3 px-4">{convertVal(row.length)}</td>
+                            <td className="py-3 px-4">{convertVal(row.inseam)}</td>
+                            <td className="py-3 px-4">{convertVal(row.hip || row.thigh)}</td>
+                            <td className="py-3 px-4">{convertVal(row.legOpening || row.opening || row.bottom)}</td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="py-3 px-4">{convertVal(row.chest)}</td>
+                            <td className="py-3 px-4">{convertVal(row.length)}</td>
+                            <td className="py-3 px-4">{convertVal(row.shoulder)}</td>
+                            <td className="py-3 px-4">{convertVal(row.sleeve)}</td>
+                          </>
+                        )}
                       </tr>
                     ))}
                   </tbody>

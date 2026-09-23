@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 533" width="400" height="533">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0a" />
+      <stop offset="50%" stop-color="#121212" />
+      <stop offset="100%" stop-color="#0a0a0a" />
+    </linearGradient>
+    <linearGradient id="shimmer" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.02" />
+      <stop offset="50%" stop-color="#ffffff" stop-opacity="0.06" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.02" />
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#bg)" />
+  <rect width="100%" height="100%" fill="url(#shimmer)" />
+  <!-- Minimalist luxury brand monogram -->
+  <g transform="translate(200, 240)" text-anchor="middle">
+    <!-- Confelion Lion silhouette / Devnagari accent -->
+    <text font-family="'Cinzel', 'Playfair Display', Georgia, serif" font-size="28" font-weight="700" fill="#ffffff" fill-opacity="0.25" letter-spacing="4">CONFELION</text>
+    <text y="32" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="9" font-weight="600" fill="#ffffff" fill-opacity="0.15" letter-spacing="3">ALL-BLACK APPAREL</text>
+  </g>
+  <rect x="20" y="20" width="360" height="493" fill="none" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1" />
+</svg>

@@ -16,19 +16,35 @@ export default function Products() {
   const searchQuery = searchParams.get('q') || '';
 
   const categories = [
-    { id: 'all', label: 'ALL PRODUCTS' },
-    { id: 'shirt', label: 'SHIRTS' },
-    { id: 'tee', label: 'T-SHIRTS' },
-    { id: 'jeans', label: 'BAGGY JEANS' },
-    { id: 'hoodie', label: 'HOODIES' },
+    { id: 'all', label: 'ALL' },
+    { id: 'unique-tees', label: 'UNIQUE TEES', type: 'tee', q: '' },
+    { id: 'waffle-knit', label: 'WAFFLE KNIT', type: 'tee', q: 'waffle' },
+    { id: 'wide-baggy', label: 'WIDE BAGGY', type: 'jeans', q: 'wide' },
+    { id: 'baggy-jeans', label: 'BAGGY JEANS', type: 'jeans', q: '' },
+    { id: 'confelion-shirt', label: 'CONFELION SHIRT', type: 'shirt', q: '' },
+    { id: 'formal-edge', label: 'FORMAL EDGE', type: 'shirt', q: 'formal' },
+    { id: 'selects-by-confelion', label: 'SELECTS BY CONFELION', isFeatured: true },
   ];
 
   // Apply filters and sorting to raw combined products
   const applyFilters = (items) => {
     let filtered = [...items];
 
-    if (activeType !== 'all') {
-      filtered = filtered.filter(p => (p.type || p.category || '').toLowerCase() === activeType.toLowerCase());
+    const currentCat = categories.find(c => c.id === activeType);
+
+    if (activeType === 'selects-by-confelion') {
+      filtered = filtered.filter(p => p.is_bestseller || p.is_recent_drop || p.featured);
+    } else if (currentCat && currentCat.type) {
+      filtered = filtered.filter(p => {
+        const pType = (p.type || p.category || '').toLowerCase();
+        const matchesType = pType.includes(currentCat.type.toLowerCase());
+        if (!currentCat.q) return matchesType;
+        const qSub = currentCat.q.toLowerCase();
+        const text = `${p.title || ''} ${p.description || ''} ${p.tags || ''}`.toLowerCase();
+        return matchesType && text.includes(qSub);
+      });
+    } else if (activeType !== 'all') {
+      filtered = filtered.filter(p => (p.type || p.category || '').toLowerCase().includes(activeType.toLowerCase()));
     }
 
     if (searchQuery) {
@@ -139,10 +155,14 @@ export default function Products() {
               <button
                 key={cat.id}
                 onClick={() => handleCategoryChange(cat.id)}
-                className={`px-3 py-1.5 text-xs font-bold uppercase tracking-wider transition-colors ${
-                  activeType === cat.id
-                    ? 'bg-white text-black border border-white'
-                    : 'bg-black text-zinc-400 border border-white/20 hover:border-white/50 hover:text-white'
+                className={`transition-all duration-200 rounded-full ${
+                  cat.isFeatured
+                    ? activeType === cat.id
+                      ? 'px-5 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-base font-black uppercase tracking-[0.16em] bg-white text-black border-2 border-white shadow-xl scale-[1.05]'
+                      : 'px-5 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-base font-black uppercase tracking-[0.16em] bg-zinc-950 text-white border-2 border-white/70 hover:border-white shadow-lg hover:scale-[1.03]'
+                    : activeType === cat.id
+                    ? 'px-3.5 py-1.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider bg-white text-black border border-white shadow-sm'
+                    : 'px-3.5 py-1.5 text-[10px] sm:text-xs font-medium uppercase tracking-wider bg-black text-zinc-300 border border-white/25 hover:border-white/70 hover:text-white'
                 }`}
               >
                 {cat.label}

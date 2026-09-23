@@ -399,6 +399,26 @@ export function AuthProvider({ children }) {
     }
   }
 
+  const signInWithOtp = async (email, otp) => {
+    try {
+      const res = await fetchAPI('/api/auth/otp/verify', {
+        method: 'POST',
+        body: JSON.stringify({ email, otp })
+      });
+      if (res && res.token && res.user) {
+        setToken(res.token);
+        setUser(res.user);
+        localStorage.setItem('token', res.token);
+        localStorage.setItem('user', JSON.stringify(res.user));
+        linkCartToCustomer(res.user.id).catch(() => {});
+        return { data: { user: res.user, token: res.token }, error: null };
+      }
+      return { data: null, error: { message: res?.error || 'Invalid OTP code' } };
+    } catch (err) {
+      return { data: null, error: { message: err.message || 'OTP verification failed' } };
+    }
+  };
+
   const isAdmin = user?.role === 'admin'
   const isCustomer = !!user && user.role !== 'admin'
 
@@ -408,6 +428,7 @@ export function AuthProvider({ children }) {
     loading, 
     signIn, 
     signInWithGoogle, 
+    signInWithOtp,
     signUp, 
     signOut, 
     resetPassword,

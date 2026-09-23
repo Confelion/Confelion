@@ -146,15 +146,23 @@ export default function ThemeCustomizer() {
     // Load latest live settings from backend and Firestore
     Promise.all([
       fetchAPI('/api/settings').catch(() => null),
+      fetch('/api/settings').then(r => r.json()).catch(() => null),
       fetchSettingsFromFirestore().catch(() => null)
-    ]).then(([backendSett, firestoreSett]) => {
-      if (backendSett || firestoreSett) {
+    ]).then(([mockSett, backendSett, firestoreSett]) => {
+      const incoming = { ...(backendSett || {}), ...(firestoreSett || {}), ...(mockSett || {}) };
+      if (Object.keys(incoming).length > 0) {
+        const incomingReels = incoming.reels_data;
+        if (incomingReels && Array.isArray(incomingReels) && incomingReels.length > 0) {
+          setReels(incomingReels);
+          try {
+            localStorage.setItem('confelion_reels', JSON.stringify(incomingReels));
+          } catch {}
+        }
         setSettings((prev) => {
           const merged = {
             ...STORE_SETTINGS,
             ...prev,
-            ...(backendSett || {}),
-            ...(firestoreSett || {})
+            ...incoming
           };
           if (merged.hero_image && !merged.hero_image_pc) {
             merged.hero_image_pc = merged.hero_image;
@@ -181,6 +189,14 @@ export default function ThemeCustomizer() {
   const updateReels = (newReels) => {
     setReels(newReels);
     setIsDirty(true);
+    setSettings((prev) => ({ ...prev, reels_data: newReels }));
+    try {
+      localStorage.setItem('confelion_reels', JSON.stringify(newReels));
+      window.dispatchEvent(new CustomEvent('reels-updated', { detail: newReels }));
+      const channel = new BroadcastChannel('confelion_media_sync');
+      channel.postMessage({ reels: newReels });
+      channel.close();
+    } catch {}
   };
 
   // Section visibility toggle
@@ -203,20 +219,40 @@ export default function ThemeCustomizer() {
   // Save all settings & reels
   const handleSave = async () => {
     try {
-      localStorage.setItem('confelion_settings', JSON.stringify(settings));
+      const mergedSettings = { ...settings, reels_data: reels };
+      setSettings(mergedSettings);
+      localStorage.setItem('confelion_settings', JSON.stringify(mergedSettings));
       localStorage.setItem('confelion_reels', JSON.stringify(reels));
       
-      window.dispatchEvent(new CustomEvent('settings-updated', { detail: settings }));
+      window.dispatchEvent(new CustomEvent('settings-updated', { detail: mergedSettings }));
       window.dispatchEvent(new CustomEvent('reels-updated', { detail: reels }));
+
+      try {
+        const channel = new BroadcastChannel('confelion_media_sync');
+        channel.postMessage({ reels, settings: mergedSettings });
+        channel.close();
+      } catch {}
+
+      const token = localStorage.getItem('token') || '';
 
       // 1. Sync settings to Backend SQLite database
       await fetchAPI('/api/admin/settings', {
         method: 'POST',
-        body: JSON.stringify({ settings })
+        body: JSON.stringify({ settings: mergedSettings })
       }).catch(err => console.warn('Backend settings save note:', err));
 
+      // 1b. Direct HTTP sync to Express server
+      await fetch('/api/admin/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ settings: mergedSettings })
+      }).catch(err => console.warn('Direct backend save note:', err));
+
       // 2. Sync settings to Cloud Firestore
-      await syncSettingsToFirestore(settings).catch(() => {});
+      await syncSettingsToFirestore(mergedSettings).catch(() => {});
 
       setIsDirty(false);
       showToast('Theme published & saved live across all devices');
@@ -298,29 +334,45 @@ export default function ThemeCustomizer() {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      showToast('Uploading video reel to Cloudflare...');
-      let videoTarget = null;
-      let sourceType = 'cloud';
-      try {
-        const uploaded = await uploadMediaAsset(file, 'reels');
-        videoTarget = uploaded.url;
-      } catch (uploadErr) {
-        console.warn('Direct cloud upload notice, saving device reference:', uploadErr.message);
-        const key = `device-video-${Date.now()}`;
-        await saveDeviceVideo(key, file);
-        videoTarget = key;
-        sourceType = 'device';
+      showToast('Uploading video reel to Cloudflare R2...');
+      const uploaded = await uploadMediaAsset(file, 'reels');
+      if (!uploaded?.url) {
+        throw new Error('Cloudflare upload did not return a valid video URL');
       }
+      const videoTarget = uploaded.url;
       const updated = [...reels];
       updated[idx] = {
         ...updated[idx],
         videoUrl: videoTarget,
-        sourceType: sourceType
+        sourceType: 'cloud'
       };
       updateReels(updated);
-      showToast('Video uploaded to reel successfully');
+      const merged = { ...settings, reels_data: updated };
+      setSettings(merged);
+
+      try {
+        localStorage.setItem('confelion_reels', JSON.stringify(updated));
+        localStorage.setItem('confelion_settings', JSON.stringify(merged));
+        window.dispatchEvent(new CustomEvent('reels-updated', { detail: updated }));
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: merged }));
+        const channel = new BroadcastChannel('confelion_media_sync');
+        channel.postMessage({ reels: updated, settings: merged });
+        channel.close();
+      } catch (e) {}
+
+      // Automatically sync to backend SQLite and Cloud Firestore
+      fetchAPI('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings: merged })
+      }).catch(() => {});
+      syncSettingsToFirestore(merged).catch(() => {});
+
+      showToast('Video reel uploaded to Cloudflare & published live!');
     } catch (err) {
-      alert('Video upload failed: ' + err.message);
+      console.error('Video upload error:', err);
+      alert('Video upload failed: ' + (err.message || 'Please check your connection'));
+    } finally {
+      if (reelVideoRef.current) reelVideoRef.current.value = '';
     }
   };
 
@@ -340,7 +392,26 @@ export default function ThemeCustomizer() {
         posterUrl: posterTarget
       };
       updateReels(updated);
-      showToast('Reel poster uploaded to Cloudflare');
+      const merged = { ...settings, reels_data: updated };
+      setSettings(merged);
+
+      try {
+        localStorage.setItem('confelion_reels', JSON.stringify(updated));
+        localStorage.setItem('confelion_settings', JSON.stringify(merged));
+        window.dispatchEvent(new CustomEvent('reels-updated', { detail: updated }));
+        window.dispatchEvent(new CustomEvent('settings-updated', { detail: merged }));
+        const channel = new BroadcastChannel('confelion_media_sync');
+        channel.postMessage({ reels: updated, settings: merged });
+        channel.close();
+      } catch (e) {}
+
+      fetchAPI('/api/admin/settings', {
+        method: 'POST',
+        body: JSON.stringify({ settings: merged })
+      }).catch(() => {});
+      syncSettingsToFirestore(merged).catch(() => {});
+
+      showToast('Reel poster uploaded to Cloudflare & saved live');
     } catch (err) {
       alert('Reel poster upload failed: ' + err.message);
     }
@@ -737,7 +808,7 @@ export default function ThemeCustomizer() {
                         id: `reel-${Date.now()}`,
                         title: 'New Drop Video',
                         productHandle: products[0]?.handle || '',
-                        videoUrl: 'https://cdn.shopify.com/videos/c/vp/ce6d49e383b64934b77bdbd5546b28c2/ce6d49e383b64934b77bdbd5546b28c2.HD-720p-4.5Mbps-85048623.mp4',
+                        videoUrl: '',
                         posterUrl: '',
                         badge: 'NEW DROP'
                       };

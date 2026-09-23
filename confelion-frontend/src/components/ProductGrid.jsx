@@ -55,8 +55,12 @@ export default function ProductGrid({
 
       {/* Dynamic Grid Layout */}
       <div className={`grid ${gridColsClass} ${gapClass}`}>
-        {products.map((product) => (
-          <ProductCard key={product.handle || product.id} product={product} />
+        {products.map((product, idx) => (
+          <ProductCard
+            key={product.handle || product.id}
+            product={product}
+            priority={idx < 4}
+          />
         ))}
       </div>
     </section>

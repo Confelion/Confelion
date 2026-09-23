@@ -4,6 +4,7 @@ import ProductGrid from '../components/ProductGrid';
 import EditorialBanner from '../components/EditorialBanner';
 import LookbookReels from '../components/LookbookReels';
 import BrandSignature from '../components/BrandSignature';
+import CollectionStrip from '../components/CollectionStrip';
 import { fetchAPI } from '../lib/api';
 import { 
   fetchSettingsFromFirestore, 
@@ -111,22 +112,52 @@ export default function Home() {
     });
 
     const handleSettingsUpdate = (e) => {
-      if (e.detail) setSettings(e.detail);
+      if (e.detail) setSettings((prev) => ({ ...prev, ...e.detail }));
     };
     const handleProductsUpdate = () => {
       loadData();
     };
 
+    const handleStorageEvent = (e) => {
+      if (e.key === 'confelion_settings' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setSettings((prev) => ({ ...prev, ...parsed }));
+        } catch {}
+      } else if (e.key === 'confelion_reels' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          setSettings((prev) => ({ ...prev, reels_data: parsed }));
+        } catch {}
+      } else if (e.key === 'confelion_products') {
+        loadData();
+      }
+    };
+
+    let channel = null;
+    try {
+      channel = new BroadcastChannel('confelion_media_sync');
+      channel.onmessage = (msg) => {
+        if (msg.data?.settings) {
+          setSettings((prev) => ({ ...prev, ...msg.data.settings }));
+        }
+        if (msg.data?.reels) {
+          setSettings((prev) => ({ ...prev, reels_data: msg.data.reels }));
+        }
+      };
+    } catch {}
+
     window.addEventListener('settings-updated', handleSettingsUpdate);
     window.addEventListener('products-updated', handleProductsUpdate);
-    window.addEventListener('storage', handleProductsUpdate);
+    window.addEventListener('storage', handleStorageEvent);
 
     return () => {
       unsubSettings();
       unsubProducts();
+      channel?.close();
       window.removeEventListener('settings-updated', handleSettingsUpdate);
       window.removeEventListener('products-updated', handleProductsUpdate);
-      window.removeEventListener('storage', handleProductsUpdate);
+      window.removeEventListener('storage', handleStorageEvent);
     };
   }, []);
 
@@ -151,9 +182,12 @@ export default function Home() {
         />
       )}
 
-      {/* 2. Recent Drops */}
+      {/* 2. Collection Filter Strip matching reference store */}
+      <CollectionStrip />
+
+      {/* 3. Recent Drops */}
       {visibility.recent_drops !== false && (
-        <div className="pt-8 sm:pt-14">
+        <div className="pt-2 sm:pt-6">
           <ProductGrid
             title={settings.recent_drops_title || 'Recent Drops'}
             subtitle={settings.recent_drops_subtitle || 'Exclusive limited edition releases'}
@@ -177,6 +211,7 @@ export default function Home() {
       {/* 4. Shop the Drop Video Reels */}
       {visibility.reels !== false && (
         <LookbookReels 
+          reels={settings.reels_data}
           title={settings.reels_title || 'Shop the Drop'}
           subtitle={settings.reels_subtitle || 'Curated motion lookbook & editorial unboxing'}
         />

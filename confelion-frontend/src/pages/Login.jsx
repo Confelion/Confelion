@@ -1,23 +1,32 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { Mail, Lock, ArrowRight, Eye, EyeOff, Check, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Eye, EyeOff, Check, AlertCircle, ArrowLeft, KeyRound, Smartphone } from 'lucide-react';
 import GoogleLogo from '../components/GoogleLogo';
 import { useAuth } from '../lib/AuthContext';
+import { fetchAPI } from '../lib/api';
 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { signIn, signInWithGoogle, resetPassword } = useAuth();
+  const { signIn, signInWithGoogle, signInWithOtp, resetPassword } = useAuth();
 
   // Redirect destination query or state
   const queryParams = new URLSearchParams(location.search);
   const redirectTarget = queryParams.get('redirect') || location.state?.from?.pathname || null;
 
   // Form states
+  const [authTab, setAuthTab] = useState('password'); // 'password' | 'otp'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
+  // OTP flow states
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpVerifying, setOtpVerifying] = useState(false);
+  const [otpNotice, setOtpNotice] = useState('');
 
   // Status & feedback states
   const [error, setError] = useState('');
@@ -59,16 +68,73 @@ export default function Login() {
     }
   };
 
+  const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+
+  const handleSendOtp = async (e) => {
+    if (e) e.preventDefault();
+    setError('');
+    setOtpNotice('');
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      return setError('Please enter a valid email address (e.g. yourname@domain.com)');
+    }
+
+    setOtpSending(true);
+    try {
+      const res = await fetchAPI('/api/auth/otp/send', {
+        method: 'POST',
+        body: JSON.stringify({ email: cleanEmail })
+      });
+
+      if (res && res.success) {
+        setOtpSent(true);
+        setOtpNotice(res.message || `Verification code sent to ${cleanEmail}`);
+      } else {
+        setError(res?.error || 'Unable to send OTP. Please verify your email.');
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to dispatch verification code');
+    } finally {
+      setOtpSending(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanOtp = otpCode.trim();
+
+    if (!cleanOtp || cleanOtp.length < 6) {
+      return setError('Please enter the full 6-digit OTP code sent to your email.');
+    }
+
+    setOtpVerifying(true);
+    const { data, error: err } = await signInWithOtp(cleanEmail, cleanOtp);
+    setOtpVerifying(false);
+
+    if (err) {
+      return setError(err.message || 'Invalid verification code. Please check and try again.');
+    }
+
+    handleSuccessfulAuth(data?.user?.role, cleanEmail);
+  };
+
   const handleEmailLogin = async (e) => {
     e.preventDefault();
     setError('');
 
     const cleanEmail = email.trim();
     if (!cleanEmail) {
-      return setError('Please enter your email address');
+      return setError('Please enter your Gmail or Email address.');
+    }
+    if (!emailRegex.test(cleanEmail)) {
+      return setError('Please enter a valid Gmail / Email format (e.g. name@gmail.com).');
     }
     if (!password) {
-      return setError('Please enter your password');
+      return setError('Please enter your password.');
     }
 
     setLoading(true);
@@ -76,7 +142,7 @@ export default function Login() {
     setLoading(false);
 
     if (err) {
-      return setError(err.message || 'Authentication failed. Please check your credentials.');
+      return setError(err.message || 'Authentication failed. Please verify credentials or sign up.');
     }
 
     handleSuccessfulAuth(data?.user?.role, cleanEmail);
@@ -154,129 +220,248 @@ export default function Login() {
         <div className="bg-zinc-950/90 backdrop-blur-md border border-white/15 p-6 sm:p-9 shadow-2xl rounded-sm">
           {!isForgotMode ? (
             <>
-              <div className="mb-6 pb-4 border-b border-white/10 flex items-center justify-between">
+              <div className="mb-5 pb-3 border-b border-white/10 flex items-center justify-between">
                 <div>
                   <h1 className="text-sm font-bold uppercase tracking-widest text-white">
-                    Sign In
+                    Sign In to Confelion
                   </h1>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Enter your credentials to access your order archives and atelier drops.
+                  <p className="text-xs text-zinc-400 mt-0.5">
+                    Secure access for VIP patrons, customers, and order tracking.
                   </p>
                 </div>
               </div>
 
+
+
               {/* Error Notification */}
               {error && (
-                <div className="mb-5 p-3.5 bg-red-950/60 border border-red-500/40 text-red-200 text-xs leading-relaxed flex items-start gap-2.5 rounded-sm animate-fade-in">
+                <div className="mb-4 p-3 bg-red-950/60 border border-red-500/40 text-red-200 text-xs leading-relaxed flex items-start gap-2.5 rounded-sm animate-fade-in">
                   <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
                   <span>{error}</span>
                 </div>
               )}
 
-              {/* Standard Email/Password Form */}
-              <form onSubmit={handleEmailLogin} className="space-y-4">
-                {/* Email Address */}
-                <div>
-                  <label 
-                    htmlFor="login-email" 
-                    className="block text-[11px] font-bold uppercase tracking-wider text-zinc-300 mb-1.5"
-                  >
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                    <input
-                      id="login-email"
-                      type="email"
-                      name="email"
-                      autoComplete="email"
-                      placeholder="name@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-black border border-white/20 text-xs sm:text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-white transition-colors"
-                      required
-                      disabled={loading || googleLoading}
-                    />
-                  </div>
+              {/* OTP Notice */}
+              {otpNotice && authTab === 'otp' && (
+                <div className="mb-4 p-3 bg-emerald-950/60 border border-emerald-500/40 text-emerald-200 text-xs leading-relaxed flex items-start gap-2.5 rounded-sm animate-fade-in">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <span>{otpNotice}</span>
                 </div>
+              )}
 
-                {/* Password with Show/Hide toggle */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
+              {/* Tab 1: Email OTP Login */}
+              {authTab === 'otp' && (
+                !otpSent ? (
+                  <form onSubmit={handleSendOtp} className="space-y-4">
+                    <div>
+                      <label htmlFor="otp-email" className="block text-[11px] font-bold uppercase tracking-wider text-zinc-300 mb-1.5">
+                        Email Address
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                        <input
+                          id="otp-email"
+                          type="email"
+                          autoComplete="email"
+                          placeholder="name@example.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          className="w-full pl-10 pr-4 py-3 bg-black border border-white/20 text-xs sm:text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-white transition-colors"
+                          required
+                          disabled={otpSending}
+                        />
+                      </div>
+                      <p className="text-[10px] text-zinc-500 mt-1">
+                        We will send a one-time 6-digit secure access code to your email.
+                      </p>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={otpSending || !email.trim()}
+                      className="w-full mt-2 py-3.5 text-xs font-bold uppercase tracking-[0.2em] bg-white text-black hover:bg-zinc-200 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                      {otpSending ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                          Sending Code...
+                        </span>
+                      ) : (
+                        <>
+                          <span>Get 6-Digit OTP</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </form>
+                ) : (
+                  <form onSubmit={handleVerifyOtp} className="space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label htmlFor="otp-code" className="block text-[11px] font-bold uppercase tracking-wider text-zinc-300">
+                          Enter 6-Digit Code
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => { setOtpSent(false); setOtpCode(''); setOtpNotice(''); }}
+                          className="text-[10px] text-zinc-400 hover:text-white underline"
+                        >
+                          Change Email
+                        </button>
+                      </div>
+                      <input
+                        id="otp-code"
+                        type="text"
+                        maxLength={6}
+                        autoFocus
+                        placeholder="••••••"
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
+                        className="w-full py-3 bg-black border border-white/30 text-center text-xl font-mono tracking-[0.4em] text-white placeholder:text-zinc-700 focus:outline-none focus:border-white transition-colors"
+                        required
+                        disabled={otpVerifying}
+                      />
+                      <div className="flex items-center justify-between mt-2 text-[11px]">
+                        <span className="text-zinc-500">Sent to: {email}</span>
+                        <button
+                          type="button"
+                          onClick={handleSendOtp}
+                          disabled={otpSending}
+                          className="text-zinc-400 hover:text-white underline cursor-pointer"
+                        >
+                          Resend Code
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={otpVerifying || otpCode.length !== 6}
+                      className="w-full mt-2 py-3.5 text-xs font-bold uppercase tracking-[0.2em] bg-white text-black hover:bg-zinc-200 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                    >
+                      {otpVerifying ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                          Verifying Code...
+                        </span>
+                      ) : (
+                        <>
+                          <Check className="w-4 h-4" />
+                          <span>Verify & Sign In</span>
+                        </>
+                      )}
+                    </button>
+                  </form>
+                )
+              )}
+
+              {/* Tab 2: Standard Password Form */}
+              {authTab === 'password' && (
+                <form onSubmit={handleEmailLogin} className="space-y-4">
+                  {/* Email Address */}
+                  <div>
                     <label 
-                      htmlFor="login-password" 
-                      className="block text-[11px] font-bold uppercase tracking-wider text-zinc-300"
+                      htmlFor="login-email" 
+                      className="block text-[11px] font-bold uppercase tracking-wider text-zinc-300 mb-1.5"
                     >
-                      Password
+                      Email Address
                     </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForgotEmail(email);
-                        setIsForgotMode(true);
-                        setError('');
-                      }}
-                      className="text-[11px] text-zinc-400 hover:text-white underline transition-colors"
-                    >
-                      Forgot password?
-                    </button>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                      <input
+                        id="login-email"
+                        type="email"
+                        name="email"
+                        autoComplete="email"
+                        placeholder="name@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 bg-black border border-white/20 text-xs sm:text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-white transition-colors"
+                        required
+                        disabled={loading || googleLoading}
+                      />
+                    </div>
                   </div>
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                    <input
-                      id="login-password"
-                      type={showPassword ? 'text' : 'password'}
-                      name="password"
-                      autoComplete="current-password"
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-3 bg-black border border-white/20 text-xs sm:text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-white transition-colors"
-                      required
-                      disabled={loading || googleLoading}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      tabIndex={-1}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+
+                  {/* Password with Show/Hide toggle */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label 
+                        htmlFor="login-password" 
+                        className="block text-[11px] font-bold uppercase tracking-wider text-zinc-300"
+                      >
+                        Password
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotEmail(email);
+                          setIsForgotMode(true);
+                          setError('');
+                        }}
+                        className="text-[11px] text-zinc-400 hover:text-white underline transition-colors"
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+                      <input
+                        id="login-password"
+                        type={showPassword ? 'text' : 'password'}
+                        name="password"
+                        autoComplete="current-password"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full pl-10 pr-10 py-3 bg-black border border-white/20 text-xs sm:text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-white transition-colors"
+                        required
+                        disabled={loading || googleLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        tabIndex={-1}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
                   </div>
-                </div>
 
-                {/* Remember Me Checkbox */}
-                <div className="flex items-center justify-between pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-zinc-400 hover:text-zinc-300">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-3.5 h-3.5 accent-white rounded bg-black border-white/20"
-                    />
-                    <span>Remember this device</span>
-                  </label>
-                </div>
+                  {/* Remember Me Checkbox */}
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-zinc-400 hover:text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-white rounded bg-black border-white/20"
+                      />
+                      <span>Remember this device</span>
+                    </label>
+                  </div>
 
-                {/* Submit Button */}
-                <button
-                  type="submit"
-                  disabled={loading || googleLoading}
-                  className="w-full mt-2 py-3.5 text-xs font-bold uppercase tracking-[0.2em] bg-white text-black hover:bg-zinc-200 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2"
-                >
-                  {loading ? (
-                    <span className="inline-flex items-center gap-2">
-                      <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                      AUTHENTICATING...
-                    </span>
-                  ) : (
-                    <>
-                      SIGN IN <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
+                  {/* Submit Button */}
+                  <button
+                    type="submit"
+                    disabled={loading || googleLoading}
+                    className="w-full mt-2 py-3.5 text-xs font-bold uppercase tracking-[0.2em] bg-white text-black hover:bg-zinc-200 active:scale-[0.99] disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                  >
+                    {loading ? (
+                      <span className="inline-flex items-center gap-2">
+                        <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        AUTHENTICATING...
+                      </span>
+                    ) : (
+                      <>
+                        <span>Sign In</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
 
               {/* Social Login Separator */}
               <div className="relative flex items-center justify-center my-5">

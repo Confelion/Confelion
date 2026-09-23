@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Menu, Search, User, ShoppingBag, X } from 'lucide-react';
 import { STORE_SETTINGS, PRODUCTS_DATA } from '../data/mockData';
 import { useAuth } from '../lib/AuthContext';
+import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
 
 export default function Navigation() {
   const { user, isAdmin, signOut } = useAuth();
@@ -280,8 +281,13 @@ export default function Navigation() {
                     className="flex items-center gap-4 p-2.5 bg-zinc-950 border border-white/10 hover:border-white/30 transition-colors"
                   >
                     <img
-                      src={prod.image_url}
+                      src={optimizeImageUrl(prod.image_url, { width: 100, height: 120, format: 'webp' })}
                       alt={prod.title}
+                      loading="lazy"
+                      onError={(e) => {
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = PLACEHOLDER_IMAGE;
+                      }}
                       className="w-12 h-14 object-cover bg-black"
                     />
                     <div className="flex-1 min-w-0">
