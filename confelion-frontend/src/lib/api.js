@@ -13,19 +13,33 @@ import { sendOrderConfirmationEmail } from './emailService.js'
 
 export const API_BASE = ''
 
+const CATALOG_STORAGE_VERSION = 'v2_real_apparel_photos';
+
 // Helper to get or initialize stored products
 export function getStoredProducts() {
   try {
-    const local = localStorage.getItem('confelion_products')
-    if (local) {
-      const parsed = JSON.parse(local)
-      if (Array.isArray(parsed)) {
-        return parsed
+    const version = localStorage.getItem('confelion_catalog_version');
+    if (version === CATALOG_STORAGE_VERSION) {
+      const local = localStorage.getItem('confelion_products');
+      if (local) {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // If stored products still contain legacy size charts as main image, invalidate cache
+          const hasLegacySizeChartThumbnails = parsed.some(p =>
+            p.image_url?.includes('file_00000000fd8c720b930fa6798798c0ca') ||
+            p.image_url?.includes('Picsart_26-03-23_23-19-52-118') ||
+            p.image_url?.includes('WhatsApp_Image_2026-04-27_at_3.30.25_PM')
+          );
+          if (!hasLegacySizeChartThumbnails) {
+            return parsed;
+          }
+        }
       }
     }
   } catch {}
-  localStorage.setItem('confelion_products', JSON.stringify(PRODUCTS_DATA))
-  return PRODUCTS_DATA
+  localStorage.setItem('confelion_catalog_version', CATALOG_STORAGE_VERSION);
+  localStorage.setItem('confelion_products', JSON.stringify(PRODUCTS_DATA));
+  return PRODUCTS_DATA;
 }
 
 export function saveStoredProducts(prods) {

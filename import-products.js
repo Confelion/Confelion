@@ -62,7 +62,15 @@ db.exec(`
   );
 `);
 
-console.log('Database tables created.');
+console.log('Database tables verified.');
+
+// Clean previous import to refresh with genuine images
+db.exec(`
+  DELETE FROM product_images;
+  DELETE FROM variants;
+  DELETE FROM options;
+  DELETE FROM products;
+`);
 
 const csvContent = fs.readFileSync('products_export_1 (2).csv', 'utf-8');
 const records = csv.parse(csvContent, { columns: true, skipComments: true });
@@ -135,37 +143,16 @@ for (const row of records) {
   variantStmt.run(productId, variantSku, variantPrice, variantCompareAtPrice, variantInventoryQty, variantInventoryPolicy, variantRequiresShipping, variantTaxable, costPerItem, 'active');
   variantCount++;
 
-  // Extract product images from Body (HTML)
-  const bodyHtml = row['Body (HTML)'] ? row['Body (HTML)'].trim() : '';
+  // Import genuine product images from 'Image Src' column
+  const imageSrc = row['Image Src'] ? row['Image Src'].trim() : '';
+  const imagePos = row['Image Position'] ? parseInt(row['Image Position'], 10) : 1;
+  const imageAlt = row['Image Alt Text'] ? row['Image Alt Text'].trim() : '';
 
-  function extractImageUrls(html) {
-    const urls = [];
-    const matches = html.match(/src="([^"]+)"/g) || [];
-    for (const match of matches) {
-      const url = match.replace('src="', '').replace('"', '');
-      if (url && !urls.includes(url)) {
-        urls.push(url);
-      }
-    }
-    return urls;
-  }
-
-  function extractImageAlt(html) {
-    const matches = html.match(/alt="([^"]+)"/g) || [];
-    if (matches.length > 0) {
-      return matches[0].replace('alt="', '').replace('"', '');
-    }
-    return '';
-  }
-
-  const productImages = extractImageUrls(bodyHtml);
-  const productImageAlt = extractImageAlt(bodyHtml);
-
-  for (let j = 0; j < productImages.length; j++) {
+  if (imageSrc) {
     const imgStmt = db.prepare(
       'INSERT OR IGNORE INTO product_images (product_id, image_url, position, alt_text) VALUES (?, ?, ?, ?)'
     );
-    imgStmt.run(productId, productImages[j], j + 1, productImageAlt || `Product image ${j + 1}`);
+    imgStmt.run(productId, imageSrc, imagePos, imageAlt || `${title} image ${imagePos}`);
   }
 
   productCount++;
