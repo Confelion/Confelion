@@ -44,18 +44,27 @@ export const db = getFirestore(app);
 // Cloud Storage for media assets
 export const storage = getStorage(app);
 
-// Google Analytics (guarded for SSR / privacy extensions)
+// Google Analytics (guarded for SSR / privacy extensions / placeholder credentials)
 export let analytics = null;
 if (typeof window !== 'undefined') {
-  isSupported()
-    .then((supported) => {
-      if (supported) {
-        analytics = getAnalytics(app);
-      }
-    })
-    .catch((err) => {
-      console.warn('Firebase Analytics not supported in this browser context:', err.message);
-    });
+  const isPlaceholderConfig = 
+    !firebaseConfig.appId || 
+    firebaseConfig.appId.includes('1234567890abcdef') || 
+    firebaseConfig.apiKey?.includes('AIzaSyAPuTvYWvFYOpxOEx34jQTaMB1wvLy23iY');
+
+  if (!isPlaceholderConfig && firebaseConfig.measurementId) {
+    isSupported()
+      .then((supported) => {
+        if (supported) {
+          try {
+            analytics = getAnalytics(app);
+          } catch (err) {
+            // Silently fallback if analytics is blocked or forbidden
+          }
+        }
+      })
+      .catch(() => {});
+  }
 }
 
 /**

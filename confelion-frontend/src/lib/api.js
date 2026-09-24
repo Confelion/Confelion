@@ -39,7 +39,7 @@ export function saveStoredProducts(prods) {
 if (typeof window !== 'undefined') {
   // 1. Sync from Express backend SQLite database
   fetch('/api/products')
-    .then(r => r.json())
+    .then(r => (r.ok ? r.json() : []))
     .then(serverProds => {
       if (Array.isArray(serverProds) && serverProds.length > 0) {
         const current = getStoredProducts()
@@ -119,7 +119,7 @@ export function saveStoredSettings(s) {
 if (typeof window !== 'undefined') {
   // 1. Fetch live settings and reels from Express backend SQLite database
   fetch('/api/settings')
-    .then(r => r.json())
+    .then(r => (r.ok ? r.json() : null))
     .then(serverSettings => {
       if (serverSettings && typeof serverSettings === 'object' && Object.keys(serverSettings).length > 0) {
         const current = getStoredSettings()

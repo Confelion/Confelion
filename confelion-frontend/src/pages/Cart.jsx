@@ -21,6 +21,7 @@ import { useAuth } from '../lib/AuthContext';
 import { getCachedCart, saveCartToCache } from '../lib/cartManager';
 import { generateOrderInvoicePDF } from '../lib/invoiceGenerator';
 import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
+import { getSavedShippingAddress, saveCustomerShippingAddress } from '../lib/customerAddress';
 
 export default function Cart() {
   const navigate = useNavigate();
