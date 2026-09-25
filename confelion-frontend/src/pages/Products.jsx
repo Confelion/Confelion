@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ProductCard from '../components/ProductCard';
-import { fetchAPI } from '../lib/api';
+import { fetchAPI, getDeletedProductHandles, getStoredProducts } from '../lib/api';
 import { fetchFirestoreProducts, subscribeToProducts } from '../lib/firebase';
-import { PRODUCTS_DATA } from '../data/mockData';
 
 export default function Products() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -71,10 +70,23 @@ export default function Products() {
         fetchFirestoreProducts().catch(() => [])
       ]);
 
+      const deleted = getDeletedProductHandles();
       const map = new Map();
-      PRODUCTS_DATA.forEach(p => map.set(p.handle || p.id, p));
-      if (Array.isArray(apiProds)) apiProds.forEach(p => map.set(p.handle || p.id, p));
-      if (Array.isArray(fsProds)) fsProds.forEach(p => map.set(p.handle || p.id, p));
+      const catalog = (Array.isArray(apiProds) && apiProds.length > 0) ? apiProds : getStoredProducts();
+      catalog.forEach(p => {
+        const key = p.handle || p.id;
+        if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+          map.set(key, p);
+        }
+      });
+      if (Array.isArray(fsProds)) {
+        fsProds.forEach(p => {
+          const key = p.handle || p.id;
+          if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+            map.set(key, p);
+          }
+        });
+      }
 
       const combined = Array.from(map.values());
       setRawProducts(combined);
@@ -94,11 +106,21 @@ export default function Products() {
     // Real-time synchronization: newly added or modified products appear instantly
     const unsub = subscribeToProducts((liveProds) => {
       if (Array.isArray(liveProds) && liveProds.length > 0) {
+        const deleted = getDeletedProductHandles();
         setRawProducts(prev => {
           const map = new Map();
-          PRODUCTS_DATA.forEach(p => map.set(p.handle || p.id, p));
-          prev.forEach(p => map.set(p.handle || p.id, p));
-          liveProds.forEach(p => map.set(p.handle || p.id, p));
+          prev.forEach(p => {
+            const key = p.handle || p.id;
+            if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+              map.set(key, p);
+            }
+          });
+          liveProds.forEach(p => {
+            const key = p.handle || p.id;
+            if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+              map.set(key, p);
+            }
+          });
           const combined = Array.from(map.values());
           applyFilters(combined);
           return combined;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Play, X, ShoppingBag } from 'lucide-react';
-import { REELS_DATA, PRODUCTS_DATA } from '../data/mockData';
+import { REELS_DATA } from '../data/mockData';
+import { getStoredProducts } from '../lib/api';
 import { Link } from 'react-router-dom';
 import { parseYouTubeUrl, getDeviceVideoUrl } from '../lib/videoStorage';
 
@@ -117,13 +118,14 @@ export default function LookbookReels({
 
   const getProduct = (handle) => {
     try {
-      const storedProds = JSON.parse(localStorage.getItem('confelion_products') || '[]');
+      const storedProds = getStoredProducts();
       if (storedProds.length > 0) {
         const found = storedProds.find((p) => p.handle === handle);
         if (found) return found;
+        return storedProds[0];
       }
     } catch {}
-    return PRODUCTS_DATA.find((p) => p.handle === handle) || PRODUCTS_DATA[0];
+    return null;
   };
 
   const getVideoSrc = (rawUrl) => {

@@ -15,8 +15,36 @@ export const API_BASE = ''
 
 const CATALOG_STORAGE_VERSION = 'v2_real_apparel_photos';
 
+export function getDeletedProductHandles() {
+  try {
+    const list = JSON.parse(localStorage.getItem('confelion_deleted_products') || '[]');
+    return new Set(Array.isArray(list) ? list : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markProductDeleted(handleOrId) {
+  if (!handleOrId) return;
+  try {
+    const set = getDeletedProductHandles();
+    set.add(String(handleOrId));
+    localStorage.setItem('confelion_deleted_products', JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+export function unmarkProductDeleted(handleOrId) {
+  if (!handleOrId) return;
+  try {
+    const set = getDeletedProductHandles();
+    set.delete(String(handleOrId));
+    localStorage.setItem('confelion_deleted_products', JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
 // Helper to get or initialize stored products
 export function getStoredProducts() {
+  const deleted = getDeletedProductHandles();
   try {
     const version = localStorage.getItem('confelion_catalog_version');
     if (version === CATALOG_STORAGE_VERSION) {
@@ -24,67 +52,77 @@ export function getStoredProducts() {
       if (local) {
         const parsed = JSON.parse(local);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // If stored products still contain legacy size charts as main image, invalidate cache
           const hasLegacySizeChartThumbnails = parsed.some(p =>
             p.image_url?.includes('file_00000000fd8c720b930fa6798798c0ca') ||
             p.image_url?.includes('Picsart_26-03-23_23-19-52-118') ||
             p.image_url?.includes('WhatsApp_Image_2026-04-27_at_3.30.25_PM')
           );
           if (!hasLegacySizeChartThumbnails) {
-            return parsed;
+            return parsed.filter(p => !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false);
           }
         }
       }
     }
   } catch {}
   localStorage.setItem('confelion_catalog_version', CATALOG_STORAGE_VERSION);
-  localStorage.setItem('confelion_products', JSON.stringify(PRODUCTS_DATA));
-  return PRODUCTS_DATA;
+  const cleanInitial = PRODUCTS_DATA.filter(p => !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false);
+  localStorage.setItem('confelion_products', JSON.stringify(cleanInitial));
+  return cleanInitial;
 }
 
 export function saveStoredProducts(prods) {
-  localStorage.setItem('confelion_products', JSON.stringify(prods))
+  const deleted = getDeletedProductHandles();
+  const clean = (prods || []).filter(p => !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false);
+  localStorage.setItem('confelion_products', JSON.stringify(clean));
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('products-updated', { detail: prods }))
+    window.dispatchEvent(new CustomEvent('products-updated', { detail: clean }));
   }
 }
 
 // Remote products synchronization from Backend Server & Firestore
 if (typeof window !== 'undefined') {
-  // 1. Sync from Express backend SQLite database
+  // 1. Sync from Express backend SQLite database or Vercel serverless catalog
   fetch('/api/products')
     .then(r => (r.ok ? r.json() : []))
     .then(serverProds => {
       if (Array.isArray(serverProds) && serverProds.length > 0) {
-        const current = getStoredProducts()
-        const map = new Map()
-        current.forEach(p => map.set(p.handle || p.id, p))
+        const deleted = getDeletedProductHandles();
+        const current = getStoredProducts();
+        const map = new Map();
+        // Preserve any custom edited products from admin first!
+        current.forEach(p => map.set(p.handle || p.id, p));
         serverProds.forEach(p => {
-          if (!p.is_deleted && p.published !== 0 && p.published !== false) {
-            map.set(p.handle || p.id, { ...map.get(p.handle || p.id), ...p })
+          const key = p.handle || p.id;
+          if (!deleted.has(key) && !p.is_deleted && p.published !== 0 && p.published !== false) {
+            // Only add if not already customized locally
+            if (!map.has(key)) {
+              map.set(key, p);
+            }
           }
-        })
-        const merged = Array.from(map.values())
-        saveStoredProducts(merged)
+        });
+        const merged = Array.from(map.values()).filter(p => !deleted.has(p.handle) && !deleted.has(p.id));
+        saveStoredProducts(merged);
       }
     })
-    .catch(() => {})
+    .catch(() => {});
 
   // 2. Sync from Firestore if available
   fetchFirestoreProducts().then((remoteProds) => {
     if (Array.isArray(remoteProds) && remoteProds.length > 0) {
-      const current = getStoredProducts()
-      const map = new Map()
-      current.forEach(p => map.set(p.handle || p.id, p))
+      const deleted = getDeletedProductHandles();
+      const current = getStoredProducts();
+      const map = new Map();
+      current.forEach(p => map.set(p.handle || p.id, p));
       remoteProds.forEach(p => {
-        if (!p.is_deleted && p.published !== false) {
-          map.set(p.handle || p.id, { ...map.get(p.handle || p.id), ...p })
+        const key = p.handle || p.id;
+        if (!deleted.has(key) && !p.is_deleted && p.published !== false) {
+          map.set(key, { ...map.get(key), ...p });
         }
-      })
-      const merged = Array.from(map.values())
-      saveStoredProducts(merged)
+      });
+      const merged = Array.from(map.values()).filter(p => !deleted.has(p.handle) && !deleted.has(p.id));
+      saveStoredProducts(merged);
     }
-  }).catch(() => {})
+  }).catch(() => {});
 }
 
 // Helper to get or initialize stored settings
@@ -321,203 +359,9 @@ export async function fetchAPI(path, options = {}) {
     body = typeof options.body === 'string' ? JSON.parse(options.body) : (options.body || {})
   } catch {}
 
-  // 1. Auth Login: /api/auth/login
-  if (cleanPath === '/api/auth/login') {
-    const { email = '', password = '' } = body
-    const cleanEmail = email.trim().toLowerCase()
-    
-    if (
-      (cleanEmail === 'confelion@gmail.com' && (password === 'confelionmain123' || password === '123@123')) ||
-      (cleanEmail === 'admin.confelion@gmail.com' && (password === 'confelionmain123' || password === '123@123')) ||
-      (cleanEmail === 'admin@confelion.com' && (password === 'confelionmain123' || password === 'admin123'))
-    ) {
-      const adminUser = {
-        id: 'usr_admin_01',
-        email: 'confelion@gmail.com',
-        name: 'Confelion Admin',
-        role: 'admin',
-      }
-      return {
-        token: 'admin_jwt_demo_token_' + Date.now(),
-        user: adminUser,
-      }
-    } else if (cleanEmail.includes('google') || password === 'google_oauth_demo') {
-      let customers = getStoredCustomers()
-      let googleUser = customers.find(c => c.email && c.email.toLowerCase() === cleanEmail)
-      if (!googleUser) {
-        const username = cleanEmail.split('@')[0] || 'patron'
-        const formattedName = username.charAt(0).toUpperCase() + username.slice(1)
-        googleUser = {
-          id: 'cust_g_' + Date.now(),
-          email: cleanEmail,
-          name: formattedName,
-          phone: '',
-          city: '',
-          address: '',
-          pincode: '',
-          total_orders: 0,
-          total_spent: 0,
-          status: 'Active Member',
-          role: 'customer',
-          joined_date: new Date().toISOString().split('T')[0]
-        }
-        customers.push(googleUser)
-        saveStoredCustomers(customers)
-      }
-      return {
-        token: 'google_jwt_' + Date.now(),
-        user: { ...googleUser, role: 'customer' },
-      }
-    } else if (cleanEmail && password) {
-      const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-      if (!emailRegex.test(cleanEmail)) {
-        return { error: 'Please enter a valid email address format (e.g. name@gmail.com).' };
-      }
-      if (password.length < 4) {
-        return { error: 'Password must be at least 4 characters.' };
-      }
-
-      let customers = getStoredCustomers();
-      let customer = customers.find(c => c.email && c.email.toLowerCase() === cleanEmail);
-      if (!customer) {
-        const username = cleanEmail.split('@')[0] || 'patron';
-        const formattedName = username.charAt(0).toUpperCase() + username.slice(1);
-        customer = {
-          id: 'cust_' + Date.now(),
-          email: cleanEmail,
-          name: formattedName,
-          phone: '',
-          city: 'India',
-          address: '',
-          pincode: '',
-          total_orders: 0,
-          total_spent: 0,
-          status: 'Active Member',
-          role: 'customer',
-          joined_date: new Date().toISOString().split('T')[0]
-        };
-        customers.push(customer);
-        saveStoredCustomers(customers);
-      }
-      return {
-        token: 'cust_jwt_' + Date.now(),
-        user: { ...customer, role: 'customer' },
-      };
-    } else {
-      return { error: 'Please enter both email and password.' };
-    }
-  }
-
-  // 1a-otp. Send Email OTP: /api/auth/otp/send
-  if (cleanPath === '/api/auth/otp/send' && method === 'POST') {
-    const { email } = body;
-    const cleanEmail = (email || '').trim().toLowerCase();
-    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
-      return { error: 'Please enter a valid email address to receive OTP.' };
-    }
-
-    // Generate deterministic or secure 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    try {
-      const activeOtps = JSON.parse(localStorage.getItem('confelion_active_otps') || '{}');
-      activeOtps[cleanEmail] = { code: otp, expires: Date.now() + 10 * 60 * 1000 };
-      localStorage.setItem('confelion_active_otps', JSON.stringify(activeOtps));
-    } catch {}
-
-    console.log(`[Confelion OTP Dispatch] Verification Code for ${cleanEmail}: ${otp}`);
-    return { 
-      success: true, 
-      message: `A 6-digit verification code has been dispatched to ${cleanEmail}. (Code: ${otp})`,
-      demo_otp: otp 
-    };
-  }
-
-  // 1a-otp-verify. Verify Email OTP: /api/auth/otp/verify
-  if (cleanPath === '/api/auth/otp/verify' && method === 'POST') {
-    const { email, otp } = body;
-    const cleanEmail = (email || '').trim().toLowerCase();
-    const cleanOtp = (otp || '').trim();
-
-    let valid = false;
-    try {
-      const activeOtps = JSON.parse(localStorage.getItem('confelion_active_otps') || '{}');
-      const entry = activeOtps[cleanEmail];
-      if (entry && entry.code === cleanOtp && entry.expires > Date.now()) {
-        valid = true;
-        delete activeOtps[cleanEmail];
-        localStorage.setItem('confelion_active_otps', JSON.stringify(activeOtps));
-      } else if (cleanOtp === '123456') {
-        valid = true; // Safe master test OTP
-      }
-    } catch {
-      if (cleanOtp === '123456') valid = true;
-    }
-
-    if (!valid) {
-      return { error: 'Invalid or expired OTP code. Please check your email or request a new code.' };
-    }
-
-    let customers = getStoredCustomers();
-    let customer = customers.find(c => c.email && c.email.toLowerCase() === cleanEmail);
-    if (!customer) {
-      customer = {
-        id: 'cust_' + Date.now(),
-        name: cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-        email: cleanEmail,
-        phone: '',
-        city: 'Mumbai, MH',
-        address: '',
-        total_orders: 0,
-        total_spent: 0,
-        status: 'Active Member',
-        role: 'customer',
-        joined_date: new Date().toISOString().split('T')[0]
-      };
-      customers.push(customer);
-      saveStoredCustomers(customers);
-    }
-
-    return {
-      token: 'otp_jwt_' + Date.now(),
-      user: { ...customer, role: 'customer' }
-    };
-  }
-
-  // 1b. Auth Signup: /api/auth/signup
-  if (cleanPath === '/api/auth/signup') {
-    const { name = '', email = '', password = '' } = body
-    const cleanEmail = (email || '').trim().toLowerCase()
-    if (!cleanEmail || !password) {
-      return { error: 'Please enter both email and password.' }
-    }
-    let customers = getStoredCustomers()
-    let existing = customers.find(c => c.email && c.email.toLowerCase() === cleanEmail)
-    if (existing) {
-      return {
-        token: 'cust_jwt_' + Date.now(),
-        user: { ...existing, role: 'customer' }
-      }
-    }
-    const newCustomer = {
-      id: 'cust_' + Date.now(),
-      email: cleanEmail,
-      name: name.trim() || cleanEmail.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      phone: body.phone || '',
-      city: body.city || 'Mumbai, MH',
-      address: body.address || '',
-      total_orders: 0,
-      total_spent: 0,
-      status: 'VIP Member',
-      role: 'customer',
-      joined_date: new Date().toISOString().split('T')[0]
-    }
-    customers = [newCustomer, ...customers]
-    saveStoredCustomers(customers)
-    return {
-      token: 'cust_jwt_' + Date.now(),
-      user: newCustomer,
-    }
+  // 1. Auth endpoints disabled locally: Google Firebase Authentication is the sole authority
+  if (cleanPath === '/api/auth/login' || cleanPath === '/api/auth/signup' || cleanPath.startsWith('/api/auth/otp/')) {
+    return { error: 'Authentication is managed exclusively via Google Firebase Authentication.' }
   }
 
   // 1c. Customer Profile: GET /api/customer/profile, PUT /api/customer/profile
@@ -866,6 +710,7 @@ export async function fetchAPI(path, options = {}) {
   // 11. Admin Update Existing Product: PUT /api/admin/products/:handle
   if (cleanPath.startsWith('/api/admin/products/') && method === 'PUT') {
     const handle = cleanPath.replace('/api/admin/products/', '')
+    unmarkProductDeleted(handle)
     let prods = getStoredProducts()
     const idx = prods.findIndex(p => p.handle === handle || p.id === handle)
     if (idx > -1) {
@@ -901,6 +746,7 @@ export async function fetchAPI(path, options = {}) {
   // 12. Admin Delete Product: DELETE /api/admin/products/:handle
   if (cleanPath.startsWith('/api/admin/products/') && method === 'DELETE') {
     const handle = cleanPath.replace('/api/admin/products/', '')
+    markProductDeleted(handle)
     let prods = getStoredProducts()
     prods = prods.filter(p => p.handle !== handle && p.id !== handle)
     saveStoredProducts(prods)
@@ -922,6 +768,7 @@ export async function fetchAPI(path, options = {}) {
     // Handle POST: Add new product
     if (method === 'POST') {
       const generatedHandle = body.handle || (body.title ? body.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : 'new-drop-' + Date.now())
+      unmarkProductDeleted(generatedHandle)
       const newProd = {
         id: 'prod-' + Date.now(),
         handle: generatedHandle,
@@ -1040,8 +887,9 @@ export async function fetchAPI(path, options = {}) {
       return { serviceable: false, pincode: pin, error: 'Please enter a valid 6-digit PIN code.' }
     }
     const prefix = pin.slice(0, 2)
-    const minDays = prefix === '28' ? 1 : ['11', '12', '13', '20', '21', '22', '40', '56'].includes(prefix) ? 2 : 3
-    const maxDays = minDays + 2
+    // Dispatch is guaranteed at least 5 days from current date
+    const minDays = 5
+    const maxDays = ['28', '11', '12', '13', '20', '21', '22', '40'].includes(prefix) ? 7 : 8
     const d1 = new Date(); d1.setDate(d1.getDate() + minDays)
     const d2 = new Date(); d2.setDate(d2.getDate() + maxDays)
     const fmt = d => d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })

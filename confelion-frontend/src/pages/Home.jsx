@@ -5,14 +5,14 @@ import EditorialBanner from '../components/EditorialBanner';
 import LookbookReels from '../components/LookbookReels';
 import BrandSignature from '../components/BrandSignature';
 import CollectionStrip from '../components/CollectionStrip';
-import { fetchAPI } from '../lib/api';
+import { fetchAPI, getDeletedProductHandles, getStoredProducts } from '../lib/api';
 import { 
   fetchSettingsFromFirestore, 
   subscribeToStoreSettings, 
   fetchFirestoreProducts, 
   subscribeToProducts 
 } from '../lib/firebase';
-import { STORE_SETTINGS, PRODUCTS_DATA } from '../data/mockData';
+import { STORE_SETTINGS } from '../data/mockData';
 
 export default function Home() {
   const [settings, setSettings] = useState(() => {
@@ -46,11 +46,24 @@ export default function Home() {
         fetchFirestoreProducts().catch(() => []),
       ]);
 
-      // Merge products: Firestore real-time products take priority, with backend/mock fallbacks
+      // Merge products: Active local catalog + Firestore real-time products, filtering out deleted items
+      const deleted = getDeletedProductHandles();
       const allProdsMap = new Map();
-      PRODUCTS_DATA.forEach(p => allProdsMap.set(p.handle || p.id, p));
-      if (Array.isArray(prods)) prods.forEach(p => allProdsMap.set(p.handle || p.id, p));
-      if (Array.isArray(firestoreProds)) firestoreProds.forEach(p => allProdsMap.set(p.handle || p.id, p));
+      const initialCatalog = (Array.isArray(prods) && prods.length > 0) ? prods : getStoredProducts();
+      initialCatalog.forEach(p => {
+        const key = p.handle || p.id;
+        if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+          allProdsMap.set(key, p);
+        }
+      });
+      if (Array.isArray(firestoreProds)) {
+        firestoreProds.forEach(p => {
+          const key = p.handle || p.id;
+          if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+            allProdsMap.set(key, p);
+          }
+        });
+      }
       const combinedProds = Array.from(allProdsMap.values());
 
       if (combinedProds.length > 0) {
@@ -102,9 +115,20 @@ export default function Home() {
 
     const unsubProducts = subscribeToProducts((liveProds) => {
       if (Array.isArray(liveProds) && liveProds.length > 0) {
+        const deleted = getDeletedProductHandles();
         const allProdsMap = new Map();
-        PRODUCTS_DATA.forEach(p => allProdsMap.set(p.handle || p.id, p));
-        liveProds.forEach(p => allProdsMap.set(p.handle || p.id, p));
+        getStoredProducts().forEach(p => {
+          const key = p.handle || p.id;
+          if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+            allProdsMap.set(key, p);
+          }
+        });
+        liveProds.forEach(p => {
+          const key = p.handle || p.id;
+          if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+            allProdsMap.set(key, p);
+          }
+        });
         const combined = Array.from(allProdsMap.values());
         setRecentDrops(combined.filter((p) => p.is_recent_drop).slice(0, 4));
         setBestSellers(combined.filter((p) => p.is_bestseller).slice(0, 4));

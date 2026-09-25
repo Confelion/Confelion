@@ -114,16 +114,18 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signIn = async (email, password) => {
-    // 1. Try Firebase Authentication
+    // Authenticate exclusively through Google Firebase Authentication
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password)
-      const fbUser = userCredential.user
-      const idToken = await fbUser.getIdToken()
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      const fbUser = userCredential.user;
+      const idToken = await fbUser.getIdToken();
 
       const isAdminUser = 
         fbUser.email === 'confelion@gmail.com' || 
         fbUser.email === 'admin.confelion@gmail.com' || 
-        fbUser.email === 'admin@confelion.com'
+        fbUser.email === 'admin@confelion.com';
+
       const clientUser = {
         id: fbUser.uid,
         name: fbUser.displayName || (isAdminUser ? 'Admin Confelion' : 'Confelion Member'),
@@ -135,67 +137,59 @@ export function AuthProvider({ children }) {
         pincode: '',
         status: 'Active Member',
         joined_date: new Date().toISOString().split('T')[0]
-      }
+      };
 
       try {
-        const cached = JSON.parse(localStorage.getItem('user') || 'null')
+        const cached = JSON.parse(localStorage.getItem('user') || 'null');
         if (cached && (cached.id === fbUser.uid || cached.email === fbUser.email)) {
-          if (cached.name) clientUser.name = cached.name
-          if (cached.phone) clientUser.phone = cached.phone
-          if (cached.city) clientUser.city = cached.city
-          if (cached.address) clientUser.address = cached.address
-          if (cached.pincode) clientUser.pincode = cached.pincode
+          if (cached.name) clientUser.name = cached.name;
+          if (cached.phone) clientUser.phone = cached.phone;
+          if (cached.city) clientUser.city = cached.city;
+          if (cached.address) clientUser.address = cached.address;
+          if (cached.pincode) clientUser.pincode = cached.pincode;
         }
       } catch {}
 
-      setToken(idToken)
-      setUser(clientUser)
-      localStorage.setItem('token', idToken)
-      localStorage.setItem('user', JSON.stringify(clientUser))
+      setToken(idToken);
+      setUser(clientUser);
+      localStorage.setItem('token', idToken);
+      localStorage.setItem('user', JSON.stringify(clientUser));
 
-      // Background enrichment
+      // Synchronize with Firestore database
       getUserProfileFromFirestore(fbUser.uid).then((firestoreData) => {
         if (firestoreData) {
-          setUser(prev => ({ ...prev, ...firestoreData }))
+          setUser(prev => ({ ...prev, ...firestoreData }));
         }
-      }).catch(() => {})
-      linkCartToCustomer(clientUser.id).catch(() => {})
+      }).catch(() => {});
+      saveUserProfileToFirestore(fbUser.uid, clientUser).catch(() => {});
+      linkCartToCustomer(clientUser.id).catch(() => {});
 
-      return { data: { user: clientUser, token: idToken }, error: null }
+      return { data: { user: clientUser, token: idToken }, error: null };
     } catch (fbErr) {
-      console.warn('Firebase signIn attempt note:', fbErr.code || fbErr.message)
-      
-      // 2. Seamless fallback to local/demo server authentication
-      try {
-        const res = await fetchAPI('/api/auth/login', {
-          method: 'POST',
-          body: JSON.stringify({ email, password })
-        })
+      console.warn('Firebase signIn attempt note:', fbErr.code || fbErr.message);
 
-        if (res && res.token && res.user) {
-          setToken(res.token)
-          setUser(res.user)
-          localStorage.setItem('token', res.token)
-          localStorage.setItem('user', JSON.stringify(res.user))
-          linkCartToCustomer(res.user.id).catch(() => {})
-          return { data: { user: res.user, token: res.token }, error: null }
-        }
+      let errorMessage = 'Invalid email or password. Please verify your credentials or create an account.';
 
-        if (res.error) {
-          return { data: null, error: { message: res.error } }
-        }
-      } catch (apiErr) {
-        // Return clear error message
-        let msg = fbErr.message || 'Login failed'
-        if (fbErr.code === 'auth/invalid-credential' || fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/wrong-password') {
-          msg = 'Invalid email or password. Please verify credentials or sign up.'
-        } else if (fbErr.code === 'auth/operation-not-allowed') {
-          msg = 'Email/Password sign-in is not yet enabled in your Firebase Console. Please enable it in Authentication > Sign-in method.'
-        }
-        return { data: null, error: { message: msg } }
+      if (
+        fbErr.code === 'auth/invalid-credential' ||
+        fbErr.code === 'auth/wrong-password' ||
+        fbErr.code === 'auth/user-not-found'
+      ) {
+        errorMessage = 'Invalid email or password. Please verify your credentials or create an account.';
+      } else if (fbErr.code === 'auth/invalid-email') {
+        errorMessage = 'Please enter a valid email address.';
+      } else if (fbErr.code === 'auth/user-disabled') {
+        errorMessage = 'This account has been disabled. Please contact support.';
+      } else if (fbErr.code === 'auth/too-many-requests') {
+        errorMessage = 'Access temporarily disabled due to multiple failed login attempts. Please reset your password or try again later.';
+      } else if (fbErr.message) {
+        errorMessage = fbErr.message;
       }
 
-      return { data: null, error: { message: fbErr.message || 'Login failed' } }
+      return {
+        data: null,
+        error: { message: errorMessage }
+      };
     }
   }
 
@@ -259,7 +253,7 @@ export function AuthProvider({ children }) {
       console.error('Google Sign-In error:', err)
       let msg = err.message || 'Google sign-in could not be completed'
       if (err.code === 'auth/unauthorized-domain') {
-        msg = 'Your domain is not authorized in Firebase Console (Authentication > Settings > Authorized domains). Add localhost to continue.'
+        msg = 'Your domain is not authorized in Firebase Console (Authentication > Settings > Authorized domains). Add localhost or your domain to continue.'
       } else if (err.code === 'auth/operation-not-allowed') {
         msg = 'Google Sign-In is not enabled in Firebase Console (Authentication > Sign-in method).'
       } else if (err.code === 'auth/popup-closed-by-user') {
@@ -270,20 +264,22 @@ export function AuthProvider({ children }) {
   }
 
   const signUp = async (email, password, name) => {
-    // 1. Try Firebase Authentication
+    // Authenticate and create user exclusively through Google Firebase Authentication
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password)
-      const fbUser = userCredential.user
+      const cleanEmail = (email || '').trim().toLowerCase();
+      const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const fbUser = userCredential.user;
 
       if (name) {
-        await updateProfile(fbUser, { displayName: name }).catch(() => {})
+        await updateProfile(fbUser, { displayName: name }).catch(() => {});
       }
 
-      const idToken = await fbUser.getIdToken()
+      const idToken = await fbUser.getIdToken();
       const isAdminUser = 
-        email === 'confelion@gmail.com' || 
-        email === 'admin.confelion@gmail.com' || 
-        email === 'admin@confelion.com'
+        cleanEmail === 'confelion@gmail.com' || 
+        cleanEmail === 'admin.confelion@gmail.com' || 
+        cleanEmail === 'admin@confelion.com';
+
       const clientUser = {
         id: fbUser.uid,
         name: name || 'Confelion Patron',
@@ -295,59 +291,35 @@ export function AuthProvider({ children }) {
         pincode: '',
         status: 'Active Member',
         joined_date: new Date().toISOString().split('T')[0]
-      }
+      };
 
-      setToken(idToken)
-      setUser(clientUser)
-      localStorage.setItem('token', idToken)
-      localStorage.setItem('user', JSON.stringify(clientUser))
+      setToken(idToken);
+      setUser(clientUser);
+      localStorage.setItem('token', idToken);
+      localStorage.setItem('user', JSON.stringify(clientUser));
 
-      // Persist to Firestore
-      saveUserProfileToFirestore(fbUser.uid, clientUser).catch(() => {})
-
-      // Link guest cached cart to newly created customer account
-      linkCartToCustomer(clientUser.id).catch(() => {})
-      saveUserProfileToFirestore(fbUser.uid, clientUser).catch(() => {})
+      // Persist user record directly into Cloud Firestore database
+      await saveUserProfileToFirestore(fbUser.uid, clientUser).catch(() => {});
 
       // Link guest cached cart to newly created customer account
-      linkCartToCustomer(clientUser.id).catch(() => {})
+      linkCartToCustomer(clientUser.id).catch(() => {});
 
-      return { data: { user: clientUser, token: idToken }, error: null }
+      return { data: { user: clientUser, token: idToken }, error: null };
     } catch (fbErr) {
-      console.warn('Firebase signUp attempt note:', fbErr.code || fbErr.message)
+      console.warn('Firebase signUp error:', fbErr.code || fbErr.message);
 
-      // Fallback to local / API signup if Firebase is offline or operation not enabled
-      try {
-        const res = await fetchAPI('/api/auth/signup', {
-          method: 'POST',
-          body: JSON.stringify({ name, email, password })
-        })
-
-        if (res && res.token && res.user) {
-          setToken(res.token)
-          setUser(res.user)
-          localStorage.setItem('token', res.token)
-          localStorage.setItem('user', JSON.stringify(res.user))
-          linkCartToCustomer(res.user.id).catch(() => {})
-          return { data: { user: res.user, token: res.token }, error: null }
-        }
-
-        if (res.error) {
-          return { data: null, error: { message: res.error } }
-        }
-      } catch (apiErr) {
-        let msg = fbErr.message || 'Signup failed'
-        if (fbErr.code === 'auth/email-already-in-use') {
-          msg = 'An account with this email already exists. Please sign in.'
-        } else if (fbErr.code === 'auth/weak-password') {
-          msg = 'Password should be at least 6 characters.'
-        } else if (fbErr.code === 'auth/operation-not-allowed') {
-          msg = 'Email/Password sign-up is not enabled in Firebase Console. Please enable it in Authentication > Sign-in method.'
-        }
-        return { data: null, error: { message: msg } }
+      let msg = 'Registration failed. Please check your information.';
+      if (fbErr.code === 'auth/email-already-in-use') {
+        msg = 'An account with this email already exists in Firebase. Please sign in.';
+      } else if (fbErr.code === 'auth/weak-password') {
+        msg = 'Password should be at least 6 characters long.';
+      } else if (fbErr.code === 'auth/invalid-email') {
+        msg = 'Please enter a valid email address.';
+      } else if (fbErr.message) {
+        msg = fbErr.message;
       }
 
-      return { data: null, error: { message: fbErr.message || 'Signup failed' } }
+      return { data: null, error: { message: msg } };
     }
   }
 
@@ -399,26 +371,6 @@ export function AuthProvider({ children }) {
     }
   }
 
-  const signInWithOtp = async (email, otp) => {
-    try {
-      const res = await fetchAPI('/api/auth/otp/verify', {
-        method: 'POST',
-        body: JSON.stringify({ email, otp })
-      });
-      if (res && res.token && res.user) {
-        setToken(res.token);
-        setUser(res.user);
-        localStorage.setItem('token', res.token);
-        localStorage.setItem('user', JSON.stringify(res.user));
-        linkCartToCustomer(res.user.id).catch(() => {});
-        return { data: { user: res.user, token: res.token }, error: null };
-      }
-      return { data: null, error: { message: res?.error || 'Invalid OTP code' } };
-    } catch (err) {
-      return { data: null, error: { message: err.message || 'OTP verification failed' } };
-    }
-  };
-
   const isAdmin = user?.role === 'admin'
   const isCustomer = !!user && user.role !== 'admin'
 
@@ -428,7 +380,6 @@ export function AuthProvider({ children }) {
     loading, 
     signIn, 
     signInWithGoogle, 
-    signInWithOtp,
     signUp, 
     signOut, 
     resetPassword,

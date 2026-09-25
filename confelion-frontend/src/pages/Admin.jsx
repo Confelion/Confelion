@@ -55,7 +55,10 @@ import {
   fetchDelhiveryWallet,
   fetchDelhiveryWarehouses,
   fetchDelhiveryOrders,
-  dispatchDelhiveryOrder
+  dispatchDelhiveryOrder,
+  getDeletedProductHandles,
+  markProductDeleted,
+  unmarkProductDeleted
 } from '../lib/api';
 import { STORE_SETTINGS, DEFAULT_TOPS_SIZE_CHART, DEFAULT_BOTTOMS_SIZE_CHART, REELS_DATA } from '../data/mockData';
 import { uploadMediaAsset } from '../lib/mediaStorage';
@@ -132,7 +135,7 @@ export default function Admin() {
     }
   }, [tabFromUrl]);
 
-  const { user, signOut } = useAuth();
+  const { user, signOut, loading: authLoading, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [isUnauthorized, setIsUnauthorized] = useState(false);
 
@@ -286,12 +289,20 @@ export default function Admin() {
       fetchFirestoreProducts()
         .then((firestoreProducts) => {
           if (Array.isArray(firestoreProducts) && firestoreProducts.length > 0) {
+            const deleted = getDeletedProductHandles();
             setProducts((prev) => {
               const map = new Map();
-              prev.forEach(p => map.set(p.handle || p.id, p));
+              prev.forEach(p => {
+                const key = p.handle || p.id;
+                if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+                  map.set(key, p);
+                }
+              });
               firestoreProducts.forEach(p => {
                 const key = p.handle || p.id;
-                if (!map.has(key)) map.set(key, p);
+                if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
+                  if (!map.has(key)) map.set(key, p);
+                }
               });
               return Array.from(map.values());
             });
@@ -416,37 +427,36 @@ export default function Admin() {
   };
 
   useEffect(() => {
+    if (authLoading) return;
+
     let token = localStorage.getItem('token');
     let storedUser = null;
     try {
       storedUser = JSON.parse(localStorage.getItem('user') || 'null');
     } catch {}
 
-    // If an authenticated customer account is logged in, restrict access without corrupting their account
-    if (
-      storedUser && 
-      storedUser.role !== 'admin' && 
-      storedUser.email !== 'confelion@gmail.com' && 
-      storedUser.email !== 'admin.confelion@gmail.com' &&
-      storedUser.email !== 'admin@confelion.com'
-    ) {
+    const currentUser = user || storedUser;
+    const currentToken = token;
+
+    if (!currentUser || !currentToken) {
+      navigate('/login?redirect=/admin');
+      return;
+    }
+
+    const adminEmails = [
+      'confelion@gmail.com',
+      'admin.confelion@gmail.com',
+      'admin@confelion.com'
+    ];
+    const isUserAdmin = isAdmin || (currentUser && (currentUser.role === 'admin' || adminEmails.includes((currentUser.email || '').toLowerCase())));
+
+    if (!isUserAdmin) {
       setIsUnauthorized(true);
       setLoading(false);
       return;
     }
 
-    if (!token || !storedUser) {
-      // Auto-fallback in local demo mode so admin features never get locked out
-      const demoAdmin = {
-        id: 'usr_admin_01',
-        email: 'confelion@gmail.com',
-        name: 'Confelion Admin',
-        role: 'admin',
-      };
-      token = 'admin_jwt_demo_token_' + Date.now();
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(demoAdmin));
-    }
+    setIsUnauthorized(false);
     loadAdminData();
 
     const handleOrdersUpdate = () => loadAdminData();
@@ -462,6 +472,7 @@ export default function Admin() {
       if (
         e.key === 'confelion_orders' || 
         e.key === 'confelion_products' || 
+        e.key === 'confelion_deleted_products' ||
         e.key === 'confelion_settings' ||
         e.key === 'confelion_customers' ||
         e.key === 'confelion_vip_subscribers'
@@ -485,7 +496,7 @@ export default function Admin() {
       window.removeEventListener('vip-subscribers-updated', handleVipUpdate);
       window.removeEventListener('storage', handleStorageUpdate);
     };
-  }, []);
+  }, [authLoading, user, isAdmin]);
 
   const handleSignOut = () => {
     if (window.confirm('Sign out from Confelion Admin Console?')) {
@@ -853,6 +864,7 @@ export default function Admin() {
         console.warn('Firestore product sync note:', fsErr.message);
       });
 
+      unmarkProductDeleted(payload.handle);
       setProductModalMode(null);
       loadAdminData();
     } catch (err) {
@@ -861,11 +873,14 @@ export default function Admin() {
   };
 
   const handleDeleteProduct = async (prod) => {
+    const handleOrId = prod.handle || prod.id;
     if (!window.confirm(`Are you sure you want to permanently remove "${prod.title}"?`)) return;
     try {
-      await fetchAPI(`/api/admin/products/${prod.handle || prod.id}`, { method: 'DELETE' });
+      markProductDeleted(handleOrId);
+      setProducts(prev => prev.filter(p => (p.handle || p.id) !== handleOrId));
+      await fetchAPI(`/api/admin/products/${handleOrId}`, { method: 'DELETE' });
       // Delete/archive in Cloud Firestore
-      deleteFirestoreProduct(prod.handle || prod.id).catch((fsErr) => {
+      deleteFirestoreProduct(handleOrId).catch((fsErr) => {
         console.warn('Firestore delete note:', fsErr.message);
       });
       showToast(`Removed product "${prod.title}"`);

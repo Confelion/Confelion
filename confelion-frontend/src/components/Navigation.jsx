@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Menu, Search, User, ShoppingBag, X } from 'lucide-react';
-import { STORE_SETTINGS, PRODUCTS_DATA } from '../data/mockData';
+import { STORE_SETTINGS } from '../data/mockData';
+import { getStoredProducts } from '../lib/api';
 import { useAuth } from '../lib/AuthContext';
 import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
 
@@ -37,10 +38,10 @@ export default function Navigation() {
   };
 
   const filteredSearchResults = searchQuery.trim()
-    ? PRODUCTS_DATA.filter(
+    ? getStoredProducts().filter(
         (p) =>
           p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.category.toLowerCase().includes(searchQuery.toLowerCase())
+          (p.category || '').toLowerCase().includes(searchQuery.toLowerCase())
       )
     : [];
 

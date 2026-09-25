@@ -21,12 +21,12 @@ import { getAnalytics, isSupported } from 'firebase/analytics';
 
 // Confelion Firebase Configuration
 export const firebaseConfig = {
-  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyAPuTvYWvFYOpxOEx34jQTaMB1wvLy23iY",
+  apiKey: import.meta.env?.VITE_FIREBASE_API_KEY || "AIzaSyANCiI1ZLSiUWH3DMN8SF_DYtWXsp6LcQo",
   authDomain: import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN || "confelion.firebaseapp.com",
   projectId: import.meta.env?.VITE_FIREBASE_PROJECT_ID || "confelion",
-  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "confelion.appspot.com",
-  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "762181234567",
-  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:762181234567:web:1234567890abcdef",
+  storageBucket: import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET || "confelion.firebasestorage.app",
+  messagingSenderId: import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID || "1056752902989",
+  appId: import.meta.env?.VITE_FIREBASE_APP_ID || "1:1056752902989:web:c703a7d5465a2c7222cd04",
   measurementId: import.meta.env?.VITE_FIREBASE_MEASUREMENT_ID || "G-4N2Z0NPVKN"
 };
 
@@ -418,7 +418,7 @@ export async function deleteFirestoreProduct(handleOrId) {
   if (!handleOrId || !isFirestoreAvailable) return false;
   try {
     const productDoc = doc(db, 'products', handleOrId);
-    await withFirestoreTimeout(updateDoc(productDoc, { published: false, is_deleted: true }), 1000, false);
+    await withFirestoreTimeout(setDoc(productDoc, { id: handleOrId, handle: handleOrId, published: false, is_deleted: true, updated_at: serverTimestamp() }, { merge: true }), 1500, false);
     return true;
   } catch (err) {
     return false;

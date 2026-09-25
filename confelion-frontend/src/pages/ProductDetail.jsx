@@ -17,9 +17,9 @@ import {
   Clock,
   Play
 } from 'lucide-react';
-import { fetchAPI, checkDelhiveryPincode, getStoredProducts } from '../lib/api';
+import { fetchAPI, checkDelhiveryPincode, getStoredProducts, getDeletedProductHandles } from '../lib/api';
 import { fetchFirestoreProducts } from '../lib/firebase';
-import { PRODUCTS_DATA, DEFAULT_SIZE_CHART, DEFAULT_TOPS_SIZE_CHART, DEFAULT_BOTTOMS_SIZE_CHART } from '../data/mockData';
+import { DEFAULT_SIZE_CHART, DEFAULT_TOPS_SIZE_CHART, DEFAULT_BOTTOMS_SIZE_CHART } from '../data/mockData';
 import ProductGrid from '../components/ProductGrid';
 import { addItemToCart } from '../lib/cartManager';
 import { optimizeImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageOptimizer';
@@ -68,10 +68,17 @@ export default function ProductDetail() {
   }, []);
 
   const loadProduct = async () => {
+    const deletedHandles = getDeletedProductHandles();
+    if (deletedHandles.has(handle)) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
+
     // 1. Try fetchAPI
     try {
       const res = await fetchAPI(`/api/products/${handle}`);
-      if (res && res.product) {
+      if (res && res.product && !deletedHandles.has(res.product.handle || res.product.id)) {
         setData(res);
         if (res?.variants?.length > 0) {
           setSelectedSize(res.variants[0].title || 'M');
@@ -86,7 +93,7 @@ export default function ProductDetail() {
       const res = await fetch(`/api/products/${encodeURIComponent(handle)}`);
       if (res.ok) {
         const json = await res.json();
-        if (json && json.product) {
+        if (json && json.product && !deletedHandles.has(json.product.handle || json.product.id)) {
           setData(json);
           if (json?.variants?.length > 0) {
             setSelectedSize(json.variants[0].title || 'M');
@@ -97,13 +104,10 @@ export default function ProductDetail() {
       }
     } catch (e) {}
 
-    // 3. Fallback to getStoredProducts() and PRODUCTS_DATA
+    // 3. Fallback to getStoredProducts()
     try {
       const stored = getStoredProducts();
-      let found = stored.find(p => p.handle === handle || String(p.id) === String(handle));
-      if (!found) {
-        found = PRODUCTS_DATA.find(p => p.handle === handle || String(p.id) === String(handle));
-      }
+      let found = stored.find(p => (p.handle === handle || String(p.id) === String(handle)) && !deletedHandles.has(p.handle) && !deletedHandles.has(p.id));
       if (found) {
         const productObj = {
           product: found,
@@ -125,7 +129,7 @@ export default function ProductDetail() {
     // 4. Fallback to Firestore products collection
     try {
       const fsProds = await fetchFirestoreProducts();
-      const found = fsProds.find(p => p.handle === handle || String(p.id) === String(handle));
+      const found = fsProds.find(p => (p.handle === handle || String(p.id) === String(handle)) && !deletedHandles.has(p.handle) && !deletedHandles.has(p.id) && !p.is_deleted && p.published !== false);
       if (found) {
         const productObj = {
           product: found,
@@ -249,12 +253,21 @@ export default function ProductDetail() {
     }
   };
 
-  const relatedProducts = PRODUCTS_DATA.filter((p) => p.handle !== product.handle).slice(0, 4);
+  const relatedProducts = getStoredProducts().filter((p) => p.handle !== product.handle).slice(0, 4);
 
-  // Helper to format table values according to inches / cm
-  const sizeTable = (product.size_chart_table && product.size_chart_table.length > 0)
-    ? product.size_chart_table
-    : (isBottom ? DEFAULT_BOTTOMS_SIZE_CHART : DEFAULT_TOPS_SIZE_CHART);
+  // Helper to format table values according to inches / cm - strictly guaranteed to be an array
+  let resolvedSizeTable = isBottom ? DEFAULT_BOTTOMS_SIZE_CHART : DEFAULT_TOPS_SIZE_CHART;
+  if (Array.isArray(product.size_chart_table) && product.size_chart_table.length > 0) {
+    resolvedSizeTable = product.size_chart_table;
+  } else if (typeof product.size_chart_table === 'string' && product.size_chart_table.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(product.size_chart_table);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        resolvedSizeTable = parsed;
+      }
+    } catch {}
+  }
+  const sizeTable = Array.isArray(resolvedSizeTable) ? resolvedSizeTable : (isBottom ? DEFAULT_BOTTOMS_SIZE_CHART : DEFAULT_TOPS_SIZE_CHART);
 
   const convertVal = (valStr) => {
     if (!valStr) return '-';
@@ -518,10 +531,10 @@ export default function ProductDetail() {
                 </span>
               </div>
 
-              {/* Same-day dispatch prompt */}
+              {/* Dispatch prompt */}
               <div className="flex items-center gap-1.5 text-[11px] text-zinc-300 font-medium bg-white/5 px-2.5 py-1.5 rounded">
                 <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Order within <strong className="text-white font-mono">3h 40m</strong> for today's Delhivery dispatch</span>
+                <span>Dispatched within <strong className="text-white font-mono">3 to 7 days</strong> via Delhivery Express</span>
               </div>
 
               <form onSubmit={handleCheckPincode} className="flex gap-2">
@@ -590,7 +603,7 @@ export default function ProductDetail() {
                 <div className="w-8 h-8 rounded-full border border-white/15 bg-white/5 flex items-center justify-center mb-1 text-white">
                   <RefreshCw className="w-3.5 h-3.5 text-zinc-300" />
                 </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-300">3-Day Exchange</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-300">Exchange</span>
               </div>
               <div className="flex flex-col items-center justify-center gap-1.5 p-2 text-center">
                 <div className="w-8 h-8 rounded-full border border-white/15 bg-white/5 flex items-center justify-center mb-1 text-white">
@@ -666,7 +679,7 @@ export default function ProductDetail() {
                 </button>
                 {openAccordion === 'returns' && (
                   <div className="pb-4 text-zinc-400 leading-relaxed space-y-2">
-                    <p>• 3-day doorstep pickup exchange for size adjustments.</p>
+                    <p>• Doorstep pickup exchange for size adjustments.</p>
                     <p>• Item must be unwashed, unworn, with all original tags attached.</p>
                   </div>
                 )}

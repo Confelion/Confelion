@@ -315,8 +315,8 @@ function checkPincodeServiceability(pincode) {
 
   const prefix = pin.slice(0, 2);
   let regionName = 'All India Express Zone';
-  let minDays = 3;
-  let maxDays = 5;
+  let minDays = 5;
+  let maxDays = 7;
   let zone = 'National Express';
 
   // State & Region heuristic based on first 2 digits
