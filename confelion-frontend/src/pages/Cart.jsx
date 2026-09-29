@@ -287,7 +287,7 @@ export default function Cart() {
           name: 'CONFELION',
           description: selectedPayment === 'partial' ? 'Advance Order Booking' : 'Order Checkout',
           image: '/images/confelion-icon.png',
-          order_id: rzpOrder.id.startsWith('order_') ? rzpOrder.id : undefined,
+          order_id: (rzpOrder.is_razorpay_order && rzpOrder.id && !rzpOrder.is_direct_checkout) ? rzpOrder.id : undefined,
           handler: async function (response) {
             try {
               if (!response || !response.razorpay_payment_id) {

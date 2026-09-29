@@ -16,7 +16,11 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { amount, currency = 'INR', receipt } = req.body || {};
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
+    }
+    const { amount, currency = 'INR', receipt } = body || {};
     if (!amount) {
       return res.status(400).json({ error: 'Amount is required' });
     }
@@ -25,7 +29,7 @@ module.exports = async (req, res) => {
     const keySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '';
 
     // If real Razorpay secret is set, call Razorpay Orders API
-    if (keySecret && keySecret !== 'test_secret_key') {
+    if (keySecret && keySecret !== 'test_secret_key' && !keySecret.includes('your_razorpay')) {
       try {
         const auth = Buffer.from(`${keyId}:${keySecret}`).toString('base64');
         const rzpResponse = await fetch('https://api.razorpay.com/v1/orders', {
@@ -42,26 +46,28 @@ module.exports = async (req, res) => {
         });
 
         const orderData = await rzpResponse.json();
-        if (orderData.id) {
+        if (orderData && orderData.id) {
           return res.status(200).json({
             id: orderData.id,
             amount: orderData.amount,
             currency: orderData.currency,
-            key: keyId
+            key: keyId,
+            is_razorpay_order: true
           });
         }
       } catch (rzpErr) {
-        console.warn('Razorpay API direct call failed:', rzpErr);
+        console.warn('Razorpay API direct call failed:', rzpErr.message);
       }
     }
 
-    // Standard client checkout configuration with key
+    // Standard client checkout configuration with key (direct checkout mode)
     const orderId = `order_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`;
     return res.status(200).json({
       id: orderId,
       amount: Math.round(Number(amount) * 100),
       currency: 'INR',
       key: keyId,
+      is_direct_checkout: true,
       notes: { receipt: receipt || `rcpt_${Date.now()}` }
     });
   } catch (err) {

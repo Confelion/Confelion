@@ -15,7 +15,11 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+    let body = req.body;
+    if (typeof body === 'string') {
+      try { body = JSON.parse(body); } catch {}
+    }
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = body || {};
 
     if (!razorpay_payment_id) {
       return res.status(400).json({ success: false, error: 'Payment ID is required' });
@@ -23,7 +27,7 @@ module.exports = async (req, res) => {
 
     const keySecret = process.env.RAZORPAY_KEY_SECRET || process.env.RAZORPAY_SECRET || '';
 
-    if (keySecret && razorpay_order_id && razorpay_signature) {
+    if (keySecret && keySecret !== 'test_secret_key' && !keySecret.includes('your_razorpay') && razorpay_order_id && razorpay_signature) {
       const generatedSignature = crypto
         .createHmac('sha256', keySecret)
         .update(`${razorpay_order_id}|${razorpay_payment_id}`)
