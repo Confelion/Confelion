@@ -5,6 +5,10 @@
   "outputDirectory": "confelion-frontend/dist",
   "rewrites": [
     {
+      "source": "/api/products/:handle",
+      "destination": "/api/products.js?handle=:handle"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

@@ -67,7 +67,7 @@ export default function Hero({
             className={`w-full h-auto min-h-[62vh] max-h-[75vh] object-cover object-center block transition-opacity duration-500 ${
               imgLoaded ? 'opacity-100' : 'opacity-0'
             }`}
-            fetchPriority="high"
+            fetchpriority="high"
             loading="eager"
             decoding="async"
             onLoad={() => setImgLoaded(true)}
@@ -79,7 +79,7 @@ export default function Hero({
             className={`w-full h-auto max-h-[92vh] object-cover object-top block transition-opacity duration-500 ${
               imgLoaded ? 'opacity-100' : 'opacity-0'
             }`}
-            fetchPriority="high"
+            fetchpriority="high"
             loading="eager"
             decoding="async"
             onLoad={() => setImgLoaded(true)}
@@ -93,7 +93,7 @@ export default function Hero({
               className={`hidden md:block w-full h-auto max-h-[92vh] object-cover object-top transition-opacity duration-500 ${
                 imgLoaded ? 'opacity-100' : 'opacity-0'
               }`}
-              fetchPriority="high"
+              fetchpriority="high"
               loading="eager"
               decoding="async"
               onLoad={() => setImgLoaded(true)}
@@ -105,7 +105,7 @@ export default function Hero({
               className={`block md:hidden w-full h-auto min-h-[75vh] object-cover object-center transition-opacity duration-500 ${
                 imgLoaded ? 'opacity-100' : 'opacity-0'
               }`}
-              fetchPriority="high"
+              fetchpriority="high"
               loading="eager"
               decoding="async"
               onLoad={() => setImgLoaded(true)}

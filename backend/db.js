@@ -89,6 +89,41 @@ try{db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)").run("foo
 try{db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)").run("footer_trust_2_title","3-DAY EXCHANGE")}catch{}
 try{db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)").run("footer_trust_2_text","Hassle-free size exchange guarantee.")}catch{}
 try{db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)").run("footer_trust_3_title","LUXURY PACKAGING")}catch{}
-try{db.prepare("INSERT OR IGNORE INTO settings(key,value) VALUES(?,?)").run("footer_trust_3_text","Rigid magnetic box on orders above ₹3,000.")}catch{}
+try{
+  const count = db.prepare('SELECT count(*) as count FROM products').get().count
+  if (count === 0) {
+    const fs = require('fs')
+    const path = require('path')
+    const catalogPath = path.join(__dirname, '..', 'clean_products_data.json')
+    if (fs.existsSync(catalogPath)) {
+      const prods = JSON.parse(fs.readFileSync(catalogPath, 'utf8'))
+      const insertProd = db.prepare('INSERT OR IGNORE INTO products(handle, title, vendor, product_category, type, tags, published) VALUES(?, ?, ?, ?, ?, ?, 1)')
+      const insertVariant = db.prepare('INSERT INTO variants(product_id, sku, price, compare_at_price, inventory_quantity, inventory_policy, requires_shipping, taxable, cost_per_item, status) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      const insertImage = db.prepare('INSERT INTO product_images(product_id, image_url, position, alt_text) VALUES(?, ?, ?, ?)')
+      const insertOption = db.prepare('INSERT INTO options(product_id, name, value) VALUES(?, ?, ?)')
+
+      for (const p of prods) {
+        const res = insertProd.run(p.handle, p.title, p.category || 'Confelion', p.category || 'Apparel', p.type || 'apparel', Array.isArray(p.tags) ? p.tags.join(',') : (p.tags || ''))
+        const prodId = res.lastInsertRowid || db.prepare('SELECT id FROM products WHERE handle=?').get(p.handle)?.id
+        if (!prodId) continue
+
+        if (Array.isArray(p.sizes) && p.sizes.length > 0) {
+          for (const size of p.sizes) {
+            insertOption.run(prodId, 'Size', size)
+            insertVariant.run(prodId, `${p.handle}-${size}`, p.price || 999, p.compare_at_price || 0, p.inventory || 10, 'continue', 1, 1, 0, 'active')
+          }
+        } else {
+          insertVariant.run(prodId, `${p.handle}-default`, p.price || 999, p.compare_at_price || 0, p.inventory || 10, 'continue', 1, 1, 0, 'active')
+        }
+
+        const images = Array.isArray(p.images) && p.images.length > 0 ? p.images : (p.image_url ? [p.image_url] : [])
+        images.forEach((imgUrl, i) => {
+          insertImage.run(prodId, imgUrl, i + 1, `${p.title} ${i + 1}`)
+        })
+      }
+      console.log(`Seeded ${prods.length} products into DB`)
+    }
+  }
+}catch(e){console.warn('Product seed note:', e.message)}
 console.log('DB ready')}
 exports.getDb=()=>{if(!db)throw Error('DB not init');return db}

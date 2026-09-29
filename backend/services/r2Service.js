@@ -9,16 +9,24 @@ const { getDb } = require('../db');
 // Cloudflare R2 Credentials & Endpoint Configuration
 // Supports both CLOUDFLARE_R2_* and R2_* env naming schemes
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID || '3c5ba93432561f66462c312cabbd800f';
-const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID || '';
-const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY || '';
+const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID || 'b535848ad8f04c7a028d1395620e7ace';
+const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY || '400c933d990a6db69cefc927e89c221ad099e02ab96b68a6c0bd4a759dbc896a';
 const R2_BUCKET_NAME = process.env.CLOUDFLARE_R2_BUCKET_NAME || process.env.R2_BUCKET_NAME || 'paypertap-assets';
-const R2_ENDPOINT = process.env.CLOUDFLARE_R2_ENDPOINT || (R2_ACCOUNT_ID ? `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : '');
+const R2_ENDPOINT = process.env.CLOUDFLARE_R2_ENDPOINT || `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 const R2_PUBLIC_DOMAIN = (process.env.CLOUDFLARE_R2_PUBLIC_BASE_URL || process.env.R2_PUBLIC_DOMAIN || 'https://pub-2dfcf8b99fc24f2e936e2826ab666474.r2.dev').replace(/\/+$/, '');
 
 const PUBLIC_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 function isR2Configured() {
-  return Boolean(R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET_NAME && R2_ENDPOINT);
+  if (!R2_ACCESS_KEY_ID || !R2_SECRET_ACCESS_KEY || !R2_BUCKET_NAME || !R2_ENDPOINT) {
+    return false;
+  }
+  const isDummy =
+    R2_ACCESS_KEY_ID.includes('your_r2_access_key_id') ||
+    R2_SECRET_ACCESS_KEY.includes('your_r2_secret_access_key') ||
+    R2_BUCKET_NAME.includes('your-bucket-name') ||
+    R2_ENDPOINT.includes('your_account_id');
+  return !isDummy;
 }
 
 let s3Client = null;

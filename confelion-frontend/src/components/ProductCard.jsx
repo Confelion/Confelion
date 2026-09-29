@@ -40,7 +40,7 @@ export default function ProductCard({ product, priority = false }) {
           alt={product.title}
           loading={priority ? 'eager' : 'lazy'}
           decoding="async"
-          fetchPriority={priority ? 'high' : 'auto'}
+          fetchpriority={priority ? 'high' : 'auto'}
           onLoad={() => setImgLoaded(true)}
           onError={(e) => {
             e.currentTarget.onerror = null;

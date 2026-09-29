@@ -5,7 +5,7 @@ import EditorialBanner from '../components/EditorialBanner';
 import LookbookReels from '../components/LookbookReels';
 import BrandSignature from '../components/BrandSignature';
 import CollectionStrip from '../components/CollectionStrip';
-import { fetchAPI, getDeletedProductHandles, getStoredProducts } from '../lib/api';
+import { fetchAPI, getDeletedProductHandles, getStoredProducts, isProductDeleted } from '../lib/api';
 import { 
   fetchSettingsFromFirestore, 
   subscribeToStoreSettings, 
@@ -51,16 +51,14 @@ export default function Home() {
       const allProdsMap = new Map();
       const initialCatalog = (Array.isArray(prods) && prods.length > 0) ? prods : getStoredProducts();
       initialCatalog.forEach(p => {
-        const key = p.handle || p.id;
-        if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
-          allProdsMap.set(key, p);
+        if (!isProductDeleted(p, deleted)) {
+          allProdsMap.set(p.handle || p.id, p);
         }
       });
       if (Array.isArray(firestoreProds)) {
         firestoreProds.forEach(p => {
-          const key = p.handle || p.id;
-          if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
-            allProdsMap.set(key, p);
+          if (!isProductDeleted(p, deleted)) {
+            allProdsMap.set(p.handle || p.id, p);
           }
         });
       }
@@ -114,19 +112,17 @@ export default function Home() {
     });
 
     const unsubProducts = subscribeToProducts((liveProds) => {
-      if (Array.isArray(liveProds) && liveProds.length > 0) {
+      if (Array.isArray(liveProds)) {
         const deleted = getDeletedProductHandles();
         const allProdsMap = new Map();
         getStoredProducts().forEach(p => {
-          const key = p.handle || p.id;
-          if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
-            allProdsMap.set(key, p);
+          if (!isProductDeleted(p, deleted)) {
+            allProdsMap.set(p.handle || p.id, p);
           }
         });
         liveProds.forEach(p => {
-          const key = p.handle || p.id;
-          if (!deleted.has(key) && !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false) {
-            allProdsMap.set(key, p);
+          if (!isProductDeleted(p, deleted)) {
+            allProdsMap.set(p.handle || p.id, p);
           }
         });
         const combined = Array.from(allProdsMap.values());
@@ -141,6 +137,7 @@ export default function Home() {
     const handleProductsUpdate = () => {
       loadData();
     };
+    window.addEventListener('products-updated', handleProductsUpdate);
 
     const handleStorageEvent = (e) => {
       if (e.key === 'confelion_settings' && e.newValue) {

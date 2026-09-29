@@ -414,13 +414,42 @@ export function subscribeToProducts(callback) {
 /**
  * Delete product from Cloud Firestore collection 'products'.
  */
-export async function deleteFirestoreProduct(handleOrId) {
+export async function deleteFirestoreProduct(handleOrId, title = null) {
   if (!handleOrId || !isFirestoreAvailable) return false;
   try {
-    const productDoc = doc(db, 'products', handleOrId);
-    await withFirestoreTimeout(setDoc(productDoc, { id: handleOrId, handle: handleOrId, published: false, is_deleted: true, updated_at: serverTimestamp() }, { merge: true }), 1500, false);
+    const key = String(handleOrId).trim();
+    const cleanLower = key.toLowerCase();
+
+    // 1. Direct document deletion
+    const productDoc = doc(db, 'products', key);
+    await withFirestoreTimeout(deleteDoc(productDoc), 4000, null);
+
+    // 2. Query collection to delete any documents matching handle or id
+    const productsCol = collection(db, 'products');
+    const deleteQueries = [
+      query(productsCol, where('handle', '==', key)),
+      query(productsCol, where('handle', '==', cleanLower)),
+      query(productsCol, where('id', '==', key))
+    ];
+
+    if (title) {
+      deleteQueries.push(query(productsCol, where('title', '==', title)));
+    }
+
+    const snapshots = await Promise.all(deleteQueries.map(q => withFirestoreTimeout(getDocs(q), 3000, null)));
+    const docsToDelete = [];
+    snapshots.forEach(snap => {
+      if (snap && snap.docs) {
+        snap.docs.forEach(d => docsToDelete.push(deleteDoc(d.ref)));
+      }
+    });
+
+    if (docsToDelete.length > 0) {
+      await Promise.all(docsToDelete);
+    }
     return true;
   } catch (err) {
+    console.warn('[Firestore Delete Product Error]:', err.message);
     return false;
   }
 }

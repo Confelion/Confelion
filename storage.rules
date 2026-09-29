@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// ===============================================================
+// Confelion Firebase Cloud Storage Security Rules
+// ===============================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email.lower() in [
+          'confelion@gmail.com',
+          'admin@confelion.com',
+          'admin.confelion@gmail.com'
+        ] ||
+        (request.auth.token != null && request.auth.token.admin == true)
+      );
+    }
+
+    // Public read for images and media (products, banners, lookbooks)
+    match /{allPaths=**} {
+      allow read: if true;
+
+      // Authenticated users and admins can upload media (max 25MB)
+      allow write: if (isAuthenticated() || isAdmin())
+                   && request.resource.size < 25 * 1024 * 1024;
+    }
+  }
+}

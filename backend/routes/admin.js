@@ -453,15 +453,18 @@ module.exports=db=>{
  // DELETE product by handle
  r.delete('/products/:handle', async (q,s)=>{
    try{
-     const p = db.prepare('SELECT id FROM products WHERE handle=?').get(q.params.handle)
+     const target = q.params.handle;
+     const p = db.prepare('SELECT id FROM products WHERE handle=? OR id=? OR LOWER(title)=LOWER(?)').get(target, target, target);
      if(p){
-       db.prepare('DELETE FROM product_images WHERE product_id=?').run(p.id)
-       db.prepare('DELETE FROM variants WHERE product_id=?').run(p.id)
-       db.prepare('DELETE FROM options WHERE product_id=?').run(p.id)
-       db.prepare('DELETE FROM products WHERE id=?').run(p.id)
+       db.prepare('DELETE FROM product_images WHERE product_id=?').run(p.id);
+       db.prepare('DELETE FROM variants WHERE product_id=?').run(p.id);
+       db.prepare('DELETE FROM options WHERE product_id=?').run(p.id);
+       db.prepare('DELETE FROM products WHERE id=?').run(p.id);
      }
-     firebaseService.deleteFirestoreProduct(q.params.handle).catch(e => console.warn('[Firestore Delete Warning]:', e.message))
-     s.json({success:true, handle: q.params.handle})
+     if (typeof firebaseService !== 'undefined' && firebaseService?.deleteFirestoreProduct) {
+       firebaseService.deleteFirestoreProduct(target).catch(e => console.warn('[Firestore Delete Warning]:', e.message));
+     }
+     s.json({success:true, handle: target});
    }catch(e){ s.status(500).json({error:e.message}) }
  })
 

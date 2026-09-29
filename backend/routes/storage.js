@@ -47,29 +47,57 @@ module.exports = (db) => {
       }
 
       if (isR2Configured()) {
-        const result = await compressAndUploadToR2({
-          buffer: fileBuffer,
-          originalName: originalName || 'image.webp',
-          folder,
-          mimetype,
-        });
+        try {
+          const result = await compressAndUploadToR2({
+            buffer: fileBuffer,
+            originalName: originalName || 'image.webp',
+            folder,
+            mimetype,
+          });
 
-        return res.json({
-          success: true,
-          ...result
-        });
-      } else {
-        const ext = path.extname(originalName || '') || '.bin';
-        const cleanName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}${ext}`;
-        const mockUrl = `/uploads/${cleanName}`;
-        return res.json({
-          success: true,
-          url: mockUrl,
-          key: `${folder}/${cleanName}`,
-          provider: 'pending-r2-credentials',
-          note: 'Add your Cloudflare R2 credentials to .env to enable live cloud storage.'
-        });
+          return res.json({
+            success: true,
+            ...result
+          });
+        } catch (r2Err) {
+          console.warn('[Storage Warning] R2 upload error, falling back to local server storage:', r2Err.message);
+        }
       }
+
+      // Local filesystem storage with Sharp WebP optimization
+      const fs = require('fs');
+      const uploadDir = path.join(__dirname, '..', '..', 'uploads');
+      if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+      let finalBuffer = fileBuffer;
+      let targetExt = path.extname(originalName || '') || '.png';
+      let mime = mimetype || 'application/octet-stream';
+
+      if (mimetype.startsWith('image/') || /\.(png|jpe?g|webp|gif|avif)$/i.test(originalName)) {
+        try {
+          const sharp = require('sharp');
+          finalBuffer = await sharp(fileBuffer)
+            .resize(1200, 1500, { fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 80 })
+            .toBuffer();
+          targetExt = '.webp';
+          mime = 'image/webp';
+        } catch (sharpErr) {
+          console.warn('Sharp compression note:', sharpErr.message);
+        }
+      }
+
+      const cleanName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}${targetExt}`;
+      const filePath = path.join(uploadDir, cleanName);
+      fs.writeFileSync(filePath, finalBuffer);
+
+      const fileUrl = `/uploads/${cleanName}`;
+      return res.json({
+        success: true,
+        url: fileUrl,
+        key: `${folder}/${cleanName}`,
+        provider: 'local-storage',
+      });
     } catch (err) {
       console.error('Storage upload route error:', err);
       res.status(500).json({ error: err.message || 'Upload failed' });

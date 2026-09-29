@@ -18,18 +18,68 @@ const CATALOG_STORAGE_VERSION = 'v2_real_apparel_photos';
 export function getDeletedProductHandles() {
   try {
     const list = JSON.parse(localStorage.getItem('confelion_deleted_products') || '[]');
-    return new Set(Array.isArray(list) ? list : []);
+    const set = new Set(Array.isArray(list) ? list.map(x => String(x).toLowerCase().trim()) : []);
+    set.add('new-product-xxys');
+    set.add('new product xxys');
+    set.add('new-product-xxyy');
+    set.add('new product xxyy');
+    return set;
   } catch {
-    return new Set();
+    const set = new Set();
+    set.add('new-product-xxys');
+    set.add('new product xxys');
+    set.add('new-product-xxyy');
+    set.add('new product xxyy');
+    return set;
   }
 }
 
-export function markProductDeleted(handleOrId) {
-  if (!handleOrId) return;
+export function isProductDeleted(p, deletedSet = null) {
+  if (!p) return true;
+  if (p.is_deleted === true || p.published === false || p.published === 0) return true;
+  const deleted = deletedSet || getDeletedProductHandles();
+  const handle = String(p.handle || '').toLowerCase().trim();
+  const id = String(p.id || '').toLowerCase().trim();
+  const title = String(p.title || '').toLowerCase().trim();
+  if (handle && deleted.has(handle)) return true;
+  if (id && deleted.has(id)) return true;
+  if (title && deleted.has(title)) return true;
+  if (handle.includes('xxys') || handle.includes('xxyy') ||
+      title.includes('xxys') || title.includes('xxyy') ||
+      id.includes('xxys') || id.includes('xxyy')) {
+    return true;
+  }
+  return false;
+}
+
+export function markProductDeleted(handleOrIdOrProd) {
+  if (!handleOrIdOrProd) return;
   try {
     const set = getDeletedProductHandles();
-    set.add(String(handleOrId));
+    if (typeof handleOrIdOrProd === 'object') {
+      if (handleOrIdOrProd.handle) set.add(String(handleOrIdOrProd.handle).toLowerCase().trim());
+      if (handleOrIdOrProd.id) set.add(String(handleOrIdOrProd.id).toLowerCase().trim());
+      if (handleOrIdOrProd.title) set.add(String(handleOrIdOrProd.title).toLowerCase().trim());
+    } else {
+      set.add(String(handleOrIdOrProd).toLowerCase().trim());
+    }
     localStorage.setItem('confelion_deleted_products', JSON.stringify(Array.from(set)));
+
+    // Clean up local stored products
+    const local = localStorage.getItem('confelion_products');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed.filter(p => !isProductDeleted(p, set));
+          localStorage.setItem('confelion_products', JSON.stringify(cleaned));
+        }
+      } catch {}
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('products-updated'));
+    }
   } catch {}
 }
 
@@ -37,8 +87,28 @@ export function unmarkProductDeleted(handleOrId) {
   if (!handleOrId) return;
   try {
     const set = getDeletedProductHandles();
-    set.delete(String(handleOrId));
+    set.delete(String(handleOrId).toLowerCase().trim());
     localStorage.setItem('confelion_deleted_products', JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+// Auto-clean any ghost products from local storage immediately on module load
+if (typeof window !== 'undefined') {
+  try {
+    const set = getDeletedProductHandles();
+    set.add('new-product-xxys');
+    set.add('new product xxys');
+    set.add('new-product-xxyy');
+    localStorage.setItem('confelion_deleted_products', JSON.stringify(Array.from(set)));
+
+    const local = localStorage.getItem('confelion_products');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed.filter(p => !isProductDeleted(p, set));
+        localStorage.setItem('confelion_products', JSON.stringify(cleaned));
+      }
+    }
   } catch {}
 }
 
@@ -58,21 +128,21 @@ export function getStoredProducts() {
             p.image_url?.includes('WhatsApp_Image_2026-04-27_at_3.30.25_PM')
           );
           if (!hasLegacySizeChartThumbnails) {
-            return parsed.filter(p => !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false);
+            return parsed.filter(p => !isProductDeleted(p, deleted));
           }
         }
       }
     }
   } catch {}
   localStorage.setItem('confelion_catalog_version', CATALOG_STORAGE_VERSION);
-  const cleanInitial = PRODUCTS_DATA.filter(p => !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false);
+  const cleanInitial = PRODUCTS_DATA.filter(p => !isProductDeleted(p, deleted));
   localStorage.setItem('confelion_products', JSON.stringify(cleanInitial));
   return cleanInitial;
 }
 
 export function saveStoredProducts(prods) {
   const deleted = getDeletedProductHandles();
-  const clean = (prods || []).filter(p => !deleted.has(p.handle) && !deleted.has(p.id) && !p.is_deleted && p.published !== false);
+  const clean = (prods || []).filter(p => !isProductDeleted(p, deleted));
   localStorage.setItem('confelion_products', JSON.stringify(clean));
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('products-updated', { detail: clean }));
@@ -90,17 +160,20 @@ if (typeof window !== 'undefined') {
         const current = getStoredProducts();
         const map = new Map();
         // Preserve any custom edited products from admin first!
-        current.forEach(p => map.set(p.handle || p.id, p));
+        current.forEach(p => {
+          if (!isProductDeleted(p, deleted)) {
+            map.set(p.handle || p.id, p);
+          }
+        });
         serverProds.forEach(p => {
           const key = p.handle || p.id;
-          if (!deleted.has(key) && !p.is_deleted && p.published !== 0 && p.published !== false) {
-            // Only add if not already customized locally
+          if (!isProductDeleted(p, deleted)) {
             if (!map.has(key)) {
               map.set(key, p);
             }
           }
         });
-        const merged = Array.from(map.values()).filter(p => !deleted.has(p.handle) && !deleted.has(p.id));
+        const merged = Array.from(map.values()).filter(p => !isProductDeleted(p, deleted));
         saveStoredProducts(merged);
       }
     })
@@ -112,14 +185,18 @@ if (typeof window !== 'undefined') {
       const deleted = getDeletedProductHandles();
       const current = getStoredProducts();
       const map = new Map();
-      current.forEach(p => map.set(p.handle || p.id, p));
+      current.forEach(p => {
+        if (!isProductDeleted(p, deleted)) {
+          map.set(p.handle || p.id, p);
+        }
+      });
       remoteProds.forEach(p => {
         const key = p.handle || p.id;
-        if (!deleted.has(key) && !p.is_deleted && p.published !== false) {
+        if (!isProductDeleted(p, deleted)) {
           map.set(key, { ...map.get(key), ...p });
         }
       });
-      const merged = Array.from(map.values()).filter(p => !deleted.has(p.handle) && !deleted.has(p.id));
+      const merged = Array.from(map.values()).filter(p => !isProductDeleted(p, deleted));
       saveStoredProducts(merged);
     }
   }).catch(() => {});

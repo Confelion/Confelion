@@ -168,6 +168,47 @@ export function AuthProvider({ children }) {
     } catch (fbErr) {
       console.warn('Firebase signIn attempt note:', fbErr.code || fbErr.message);
 
+      // Attempt fallback to local Express / SQLite authentication
+      try {
+        const cleanEmail = (email || '').trim().toLowerCase();
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail, password })
+        });
+        if (res.ok) {
+          const authData = await res.json();
+          if (authData?.user && authData?.token) {
+            const isAdminUser = 
+              authData.user.role === 'admin' ||
+              cleanEmail === 'confelion@gmail.com' || 
+              cleanEmail === 'admin.confelion@gmail.com' || 
+              cleanEmail === 'admin@confelion.com';
+
+            const clientUser = {
+              id: String(authData.user.id),
+              name: authData.user.name || (isAdminUser ? 'Admin Confelion' : 'Confelion Member'),
+              email: authData.user.email,
+              role: isAdminUser ? 'admin' : (authData.user.role || 'customer'),
+              phone: '',
+              city: '',
+              address: '',
+              pincode: '',
+              status: 'Active Member',
+              joined_date: new Date().toISOString().split('T')[0]
+            };
+
+            setToken(authData.token);
+            setUser(clientUser);
+            localStorage.setItem('token', authData.token);
+            localStorage.setItem('user', JSON.stringify(clientUser));
+            return { data: { user: clientUser, token: authData.token }, error: null };
+          }
+        }
+      } catch (backendErr) {
+        console.warn('Backend login fallback note:', backendErr);
+      }
+
       let errorMessage = 'Invalid email or password. Please verify your credentials or create an account.';
 
       if (

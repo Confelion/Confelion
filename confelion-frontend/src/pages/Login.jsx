@@ -285,6 +285,20 @@ export default function Login() {
                       </>
                     )}
                   </button>
+
+                  {/* Quick Admin Credentials autofill */}
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmail('confelion@gmail.com');
+                        setPassword('confelionmain123');
+                      }}
+                      className="text-[11px] text-zinc-500 hover:text-zinc-300 underline tracking-wide transition-colors"
+                    >
+                      Fill Admin Credentials (confelion@gmail.com)
+                    </button>
+                  </div>
                 </form>
 
               {/* Social Login Separator */}

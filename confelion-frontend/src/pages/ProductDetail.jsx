@@ -17,7 +17,7 @@ import {
   Clock,
   Play
 } from 'lucide-react';
-import { fetchAPI, checkDelhiveryPincode, getStoredProducts, getDeletedProductHandles } from '../lib/api';
+import { fetchAPI, checkDelhiveryPincode, getStoredProducts, getDeletedProductHandles, isProductDeleted } from '../lib/api';
 import { fetchFirestoreProducts } from '../lib/firebase';
 import { DEFAULT_SIZE_CHART, DEFAULT_TOPS_SIZE_CHART, DEFAULT_BOTTOMS_SIZE_CHART } from '../data/mockData';
 import ProductGrid from '../components/ProductGrid';
@@ -69,7 +69,7 @@ export default function ProductDetail() {
 
   const loadProduct = async () => {
     const deletedHandles = getDeletedProductHandles();
-    if (deletedHandles.has(handle)) {
+    if (isProductDeleted({ handle, id: handle }, deletedHandles)) {
       setData(null);
       setLoading(false);
       return;
@@ -78,7 +78,7 @@ export default function ProductDetail() {
     // 1. Try fetchAPI
     try {
       const res = await fetchAPI(`/api/products/${handle}`);
-      if (res && res.product && !deletedHandles.has(res.product.handle || res.product.id)) {
+      if (res && res.product && !isProductDeleted(res.product, deletedHandles)) {
         setData(res);
         if (res?.variants?.length > 0) {
           setSelectedSize(res.variants[0].title || 'M');
@@ -93,7 +93,7 @@ export default function ProductDetail() {
       const res = await fetch(`/api/products/${encodeURIComponent(handle)}`);
       if (res.ok) {
         const json = await res.json();
-        if (json && json.product && !deletedHandles.has(json.product.handle || json.product.id)) {
+        if (json && json.product && !isProductDeleted(json.product, deletedHandles)) {
           setData(json);
           if (json?.variants?.length > 0) {
             setSelectedSize(json.variants[0].title || 'M');
@@ -107,7 +107,7 @@ export default function ProductDetail() {
     // 3. Fallback to getStoredProducts()
     try {
       const stored = getStoredProducts();
-      let found = stored.find(p => (p.handle === handle || String(p.id) === String(handle)) && !deletedHandles.has(p.handle) && !deletedHandles.has(p.id));
+      let found = stored.find(p => (p.handle === handle || String(p.id) === String(handle)) && !isProductDeleted(p, deletedHandles));
       if (found) {
         const productObj = {
           product: found,
@@ -129,7 +129,7 @@ export default function ProductDetail() {
     // 4. Fallback to Firestore products collection
     try {
       const fsProds = await fetchFirestoreProducts();
-      const found = fsProds.find(p => (p.handle === handle || String(p.id) === String(handle)) && !deletedHandles.has(p.handle) && !deletedHandles.has(p.id) && !p.is_deleted && p.published !== false);
+      const found = fsProds.find(p => (p.handle === handle || String(p.id) === String(handle)) && !isProductDeleted(p, deletedHandles));
       if (found) {
         const productObj = {
           product: found,
@@ -484,9 +484,9 @@ export default function ProductDetail() {
 
               {/* Equal-width Rectangular Buttons with Sharp 0px Corners */}
               <div className="grid grid-cols-5 gap-2">
-                {sizes.map((s) => (
+                {sizes.map((s, idx) => (
                   <button
-                    key={s}
+                    key={`${s}-${idx}`}
                     onClick={() => setSelectedSize(s)}
                     className={`h-11 border text-xs font-bold uppercase tracking-wider transition-all duration-150 ${
                       selectedSize === s

@@ -58,7 +58,8 @@ import {
   dispatchDelhiveryOrder,
   getDeletedProductHandles,
   markProductDeleted,
-  unmarkProductDeleted
+  unmarkProductDeleted,
+  isProductDeleted
 } from '../lib/api';
 import { STORE_SETTINGS, DEFAULT_TOPS_SIZE_CHART, DEFAULT_BOTTOMS_SIZE_CHART, REELS_DATA } from '../data/mockData';
 import { uploadMediaAsset } from '../lib/mediaStorage';
@@ -876,11 +877,11 @@ export default function Admin() {
     const handleOrId = prod.handle || prod.id;
     if (!window.confirm(`Are you sure you want to permanently remove "${prod.title}"?`)) return;
     try {
-      markProductDeleted(handleOrId);
-      setProducts(prev => prev.filter(p => (p.handle || p.id) !== handleOrId));
-      await fetchAPI(`/api/admin/products/${handleOrId}`, { method: 'DELETE' });
-      // Delete/archive in Cloud Firestore
-      deleteFirestoreProduct(handleOrId).catch((fsErr) => {
+      markProductDeleted(prod);
+      setProducts(prev => prev.filter(p => !isProductDeleted(p)));
+      await fetchAPI(`/api/admin/products/${encodeURIComponent(handleOrId)}`, { method: 'DELETE' });
+      // Delete from Cloud Firestore
+      await deleteFirestoreProduct(handleOrId, prod.title).catch((fsErr) => {
         console.warn('Firestore delete note:', fsErr.message);
       });
       showToast(`Removed product "${prod.title}"`);

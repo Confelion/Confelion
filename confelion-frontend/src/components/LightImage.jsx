@@ -38,7 +38,7 @@ export default function LightImage({
         alt={alt || title || "product"}
         loading={priority ? "eager" : "lazy"}
         decoding="async"
-        fetchPriority={priority ? "high" : "auto"}
+        fetchpriority={priority ? "high" : "auto"}
         width={w}
         height={h}
         className={`w-full h-full object-cover transition-opacity duration-200 ${
