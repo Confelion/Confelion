@@ -24,6 +24,7 @@ uploads/
 scratch/
 scratch_*.html
 scratch_*.css
+*.backup.*
 
 # Export files (Shopify theme exports)
 export_files/

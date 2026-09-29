@@ -92,22 +92,17 @@ export function unmarkProductDeleted(handleOrId) {
   } catch {}
 }
 
-// Auto-clean any ghost products from local storage immediately on module load
+// Complete dashboard & catalog purge to fresh blank slate
 if (typeof window !== 'undefined') {
   try {
-    const set = getDeletedProductHandles();
-    set.add('new-product-xxys');
-    set.add('new product xxys');
-    set.add('new-product-xxyy');
-    localStorage.setItem('confelion_deleted_products', JSON.stringify(Array.from(set)));
-
-    const local = localStorage.getItem('confelion_products');
-    if (local) {
-      const parsed = JSON.parse(local);
-      if (Array.isArray(parsed)) {
-        const cleaned = parsed.filter(p => !isProductDeleted(p, set));
-        localStorage.setItem('confelion_products', JSON.stringify(cleaned));
-      }
+    const isPurged = localStorage.getItem('confelion_purged_clean_slate_v2');
+    if (!isPurged) {
+      localStorage.setItem('confelion_purged_clean_slate_v2', 'true');
+      localStorage.setItem('confelion_products', '[]');
+      localStorage.setItem('confelion_orders', '[]');
+      localStorage.setItem('confelion_customers', '[]');
+      localStorage.removeItem('confelion_vip_subscribers');
+      localStorage.removeItem('confelion_cart');
     }
   } catch {}
 }
@@ -116,28 +111,15 @@ if (typeof window !== 'undefined') {
 export function getStoredProducts() {
   const deleted = getDeletedProductHandles();
   try {
-    const version = localStorage.getItem('confelion_catalog_version');
-    if (version === CATALOG_STORAGE_VERSION) {
-      const local = localStorage.getItem('confelion_products');
-      if (local) {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasLegacySizeChartThumbnails = parsed.some(p =>
-            p.image_url?.includes('file_00000000fd8c720b930fa6798798c0ca') ||
-            p.image_url?.includes('Picsart_26-03-23_23-19-52-118') ||
-            p.image_url?.includes('WhatsApp_Image_2026-04-27_at_3.30.25_PM')
-          );
-          if (!hasLegacySizeChartThumbnails) {
-            return parsed.filter(p => !isProductDeleted(p, deleted));
-          }
-        }
+    const local = localStorage.getItem('confelion_products');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed)) {
+        return parsed.filter(p => !isProductDeleted(p, deleted));
       }
     }
   } catch {}
-  localStorage.setItem('confelion_catalog_version', CATALOG_STORAGE_VERSION);
-  const cleanInitial = PRODUCTS_DATA.filter(p => !isProductDeleted(p, deleted));
-  localStorage.setItem('confelion_products', JSON.stringify(cleanInitial));
-  return cleanInitial;
+  return [];
 }
 
 export function saveStoredProducts(prods) {
@@ -284,115 +266,7 @@ export function getStoredOrders() {
     const local = localStorage.getItem('confelion_orders')
     if (local) return JSON.parse(local)
   } catch {}
-  const initialOrders = [
-    {
-      id: 'ORD-9402',
-      customer_name: 'Aditya Verma',
-      email: 'aditya.v@gmail.com',
-      phone: '+91 98765 43210',
-      shipping_address: 'Flat 402, Sea Crest Towers, Bandra West, Mumbai 400050',
-      city: 'Mumbai',
-      total: 5598,
-      subtotal: 5598,
-      items_count: 2,
-      items: [
-        { title: 'Veltora Aurex Formal Shirt', size: 'L', qty: 1, price: 2599 },
-        { title: 'Bluecore Wide Jeans', size: '32', qty: 1, price: 2999 },
-      ],
-      payment_method: 'Full Online Payment',
-      payment_details: { type: 'online', note: 'Prepaid via UPI' },
-      status: 'Delivered',
-      carrier: 'Delhivery Express',
-      awb_number: '17898492019482',
-      created_at: '2026-09-11T14:32:00Z',
-    },
-    {
-      id: 'ORD-9401',
-      customer_name: 'Rohan Sharma',
-      email: 'rohan.sharma99@gmail.com',
-      phone: '+91 99887 76655',
-      shipping_address: 'Villa 18, Palm Meadows, Whitefield, Bengaluru 560066',
-      city: 'Bengaluru',
-      total: 2598,
-      subtotal: 2499,
-      cod_fee: 99,
-      items_count: 1,
-      items: [
-        { title: 'Bang White Henley', size: 'M', qty: 1, price: 2499 },
-      ],
-      payment_method: 'Cash on Delivery',
-      payment_details: { type: 'cod', cod_fee: 99, amount_due: 2598 },
-      status: 'In Transit',
-      carrier: 'Delhivery Express',
-      awb_number: '17898510293847',
-      created_at: '2026-09-11T11:15:00Z',
-    },
-    {
-      id: 'ORD-9400',
-      customer_name: 'Zaid Khan',
-      email: 'zaid.khan@outlook.com',
-      phone: '+91 98111 22334',
-      shipping_address: 'B-44, Greater Kailash 1, New Delhi 110048',
-      city: 'New Delhi',
-      total: 2995,
-      subtotal: 2995,
-      items_count: 1,
-      items: [
-        { title: 'Phantom Cutout Tee', size: 'XL', qty: 1, price: 2995 },
-      ],
-      payment_method: 'Partial Payment',
-      payment_details: { type: 'partial', advance_paid: 300, remaining_balance: 2695 },
-      status: 'Processing',
-      carrier: 'Delhivery Express',
-      awb_number: null,
-      tracking_url: null,
-      created_at: '2026-09-10T19:40:00Z',
-    },
-    {
-      id: 'ORD-9399',
-      customer_name: 'Kabir Singhania',
-      email: 'kabir.s@singhania.co',
-      phone: '+91 99000 11223',
-      shipping_address: 'Penthouse 12, Sky Lounge, Koregaon Park, Pune 411001',
-      city: 'Pune',
-      total: 4999,
-      subtotal: 4999,
-      items_count: 1,
-      items: [
-        { title: 'Dark Storm Black Baggy Jeans', size: '42', qty: 1, price: 4999 },
-      ],
-      payment_method: 'Full Online Payment',
-      payment_details: { type: 'online', note: 'Prepaid via Credit Card' },
-      status: 'Delivered',
-      carrier: 'Delhivery Express',
-      awb_number: '17898730192847',
-      tracking_url: 'https://www.delhivery.com/',
-      created_at: '2026-09-07T16:20:00Z',
-    },
-    {
-      id: 'ORD-9398',
-      customer_name: 'Pooja Nair',
-      email: 'pooja.nair@icloud.com',
-      phone: '+91 97455 66778',
-      shipping_address: 'Green Valley Apts, Marine Drive, Kochi 682031',
-      city: 'Kochi',
-      total: 2999,
-      subtotal: 2999,
-      items_count: 1,
-      items: [
-        { title: 'Cool Wash Wide Leg Jeans', size: 'M', qty: 1, price: 2999 },
-      ],
-      payment_method: 'Full Online Payment',
-      payment_details: { type: 'online', note: 'Prepaid via UPI' },
-      status: 'Processing',
-      carrier: 'Delhivery Express',
-      awb_number: null,
-      tracking_url: null,
-      created_at: '2026-09-08T10:15:00Z',
-    }
-  ]
-  localStorage.setItem('confelion_orders', JSON.stringify(initialOrders))
-  return initialOrders
+  return []
 }
 
 export function saveStoredOrders(orders) {
@@ -408,11 +282,10 @@ export function getStoredCustomers() {
     const local = localStorage.getItem('confelion_customers')
     if (local) {
       const parsed = JSON.parse(local)
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+      if (Array.isArray(parsed)) return parsed
     }
   } catch {}
-  localStorage.setItem('confelion_customers', JSON.stringify(CUSTOMERS_DATA || []))
-  return CUSTOMERS_DATA || []
+  return []
 }
 
 export function saveStoredCustomers(customers) {
@@ -547,20 +420,14 @@ export async function fetchAPI(path, options = {}) {
   // 4. Admin Revenue Stats: /api/admin/revenue
   if (cleanPath === '/api/admin/revenue') {
     const orders = getStoredOrders()
-    const totalRev = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 235000)
+    const totalRev = orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0)
     return {
       period: searchParams.get('period') || 'month',
       totalRevenue: totalRev,
-      totalOrders: orders.length + 138,
-      averageOrderValue: Math.round(totalRev / (orders.length + 138)),
-      growth: '+18.4%',
-      recentSales: [
-        { date: '01 Sep', sales: 24500 },
-        { date: '04 Sep', sales: 38900 },
-        { date: '07 Sep', sales: 51200 },
-        { date: '10 Sep', sales: 68400 },
-        { date: '12 Sep', sales: 65990 },
-      ],
+      totalOrders: orders.length,
+      averageOrderValue: orders.length > 0 ? Math.round(totalRev / orders.length) : 0,
+      growth: orders.length > 0 ? '+18.4%' : '0.0%',
+      recentSales: [],
     }
   }
 

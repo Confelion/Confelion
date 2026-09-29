@@ -1408,11 +1408,11 @@ export default function Admin() {
                 <IndianRupee className="w-4 h-4 text-zinc-400" />
               </div>
               <div className="text-2xl font-bold text-[#202223]">
-                ₹{(revenue?.totalRevenue || 248990).toLocaleString('en-IN')}
+                ₹{(revenue?.totalRevenue != null ? Number(revenue.totalRevenue) : orders.reduce((sum, o) => sum + (Number(o.total) || 0), 0)).toLocaleString('en-IN')}
               </div>
-              <div className="mt-1 flex items-center gap-1 text-xs text-emerald-700 font-semibold">
-                <TrendingUp className="w-3.5 h-3.5" />
-                <span>+18.4% monthly growth</span>
+              <div className={`mt-1 flex items-center gap-1 text-xs font-semibold ${orders.length > 0 ? 'text-emerald-700' : 'text-[#6d7175]'}`}>
+                {orders.length > 0 && <TrendingUp className="w-3.5 h-3.5" />}
+                <span>{orders.length > 0 ? '+18.4% monthly growth' : 'No sales yet'}</span>
               </div>
             </div>
 
@@ -1743,78 +1743,88 @@ export default function Admin() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#f0f0f0]">
-                      {filteredProducts.map((prod) => {
-                        const inv = prod.inventory !== undefined ? Number(prod.inventory) : 15;
-                        const isLow = inv <= 5;
+                      {filteredProducts.length === 0 ? (
+                        <tr>
+                          <td colSpan="6" className="py-16 text-center text-[#6d7175]">
+                            <Package className="w-10 h-10 mx-auto mb-2 text-zinc-300" />
+                            <h3 className="text-sm font-bold text-[#202223]">No products in dashboard</h3>
+                            <p className="text-xs text-[#6d7175] mt-1">Click "Add Product" above to create your first silhouette.</p>
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredProducts.map((prod) => {
+                          const inv = prod.inventory !== undefined ? Number(prod.inventory) : 15;
+                          const isLow = inv <= 5;
 
-                        return (
-                          <tr key={prod.id || prod.handle} className="hover:bg-zinc-50/80 transition-colors">
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-12 rounded bg-zinc-100 border border-[#e1e3e5] overflow-hidden shrink-0">
-                                  <img src={prod.image_url} alt="" className="w-full h-full object-cover" />
+                          return (
+                            <tr key={prod.id || prod.handle} className="hover:bg-zinc-50/80 transition-colors">
+                              <td className="py-3 px-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-12 rounded bg-zinc-100 border border-[#e1e3e5] overflow-hidden shrink-0">
+                                    <img src={prod.image_url} alt="" className="w-full h-full object-cover" />
+                                  </div>
+                                  <div>
+                                    <Link
+                                      to={`/product/${prod.handle}`}
+                                      target="_blank"
+                                      className="font-bold text-[#202223] hover:underline block truncate max-w-[200px]"
+                                    >
+                                      {prod.title}
+                                    </Link>
+                                    <span className="text-[11px] text-[#6d7175] font-mono">{prod.handle}</span>
+                                  </div>
                                 </div>
-                                <div>
-                                  <Link
-                                    to={`/product/${prod.handle}`}
-                                    target="_blank"
-                                    className="font-bold text-[#202223] hover:underline block truncate max-w-[200px]"
-                                  >
-                                    {prod.title}
-                                  </Link>
-                                  <span className="text-[11px] text-[#6d7175] font-mono">{prod.handle}</span>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap text-[#4a4a4a] font-medium">
-                              {prod.category}
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => handleQuickStockChange(prod, -1)}
-                                  className="w-5 h-5 rounded border border-[#d2d5d8] bg-white hover:bg-zinc-100 flex items-center justify-center font-bold"
-                                >
-                                  -
-                                </button>
-                                <span className={`font-mono font-bold px-2 py-0.5 rounded ${
-                                  isLow ? 'bg-red-50 text-red-700 border border-red-200' : 'text-[#202223]'
-                                }`}>
-                                  {inv} in stock
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Active
                                 </span>
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap text-[#4a4a4a] font-medium">
+                                {prod.category}
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleQuickStockChange(prod, -1)}
+                                    className="w-5 h-5 rounded border border-[#d2d5d8] bg-white hover:bg-zinc-100 flex items-center justify-center font-bold"
+                                  >
+                                    -
+                                  </button>
+                                  <span className={`font-mono font-bold px-2 py-0.5 rounded ${
+                                    isLow ? 'bg-red-50 text-red-700 border border-red-200' : 'text-[#202223]'
+                                  }`}>
+                                    {inv} in stock
+                                  </span>
+                                  <button
+                                    onClick={() => handleQuickStockChange(prod, 1)}
+                                    className="w-5 h-5 rounded border border-[#d2d5d8] bg-white hover:bg-zinc-100 flex items-center justify-center font-bold"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4 whitespace-nowrap font-bold text-[#202223] font-mono">
+                                ₹{Number(prod.price).toLocaleString('en-IN')}
+                              </td>
+                              <td className="py-3 px-4 text-right whitespace-nowrap space-x-2">
                                 <button
-                                  onClick={() => handleQuickStockChange(prod, 1)}
-                                  className="w-5 h-5 rounded border border-[#d2d5d8] bg-white hover:bg-zinc-100 flex items-center justify-center font-bold"
+                                 onClick={() => handleOpenEditProduct(prod)}
+                                 className="px-2.5 py-1 bg-white hover:bg-zinc-100 border border-[#d2d5d8] rounded text-xs font-semibold text-zinc-700 shadow-2xs"
                                 >
-                                  +
+                                 Edit
                                 </button>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 whitespace-nowrap font-bold text-[#202223] font-mono">
-                              ₹{Number(prod.price).toLocaleString('en-IN')}
-                            </td>
-                            <td className="py-3 px-4 text-right whitespace-nowrap space-x-2">
-                              <button
-                                onClick={() => handleOpenEditProduct(prod)}
-                                className="px-2.5 py-1 bg-white hover:bg-zinc-100 border border-[#d2d5d8] rounded text-xs font-semibold text-zinc-700 shadow-2xs"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDeleteProduct(prod)}
-                                className="px-2.5 py-1 bg-white hover:bg-red-50 border border-red-200 rounded text-xs font-semibold text-red-600 shadow-2xs"
-                              >
-                                Delete
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                <button
+                                 onClick={() => handleDeleteProduct(prod)}
+                                 className="px-2.5 py-1 bg-white hover:bg-red-50 border border-red-200 rounded text-xs font-semibold text-red-600 shadow-2xs"
+                                >
+                                 Delete
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
